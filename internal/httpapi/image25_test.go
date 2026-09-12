@@ -120,6 +120,8 @@ func TestGPTImage25Endpoints(t *testing.T) {
 					_, _ = fmt.Fprintf(w, "data: {\"conversation_id\":\"image-25\",\"message\":{\"content\":{\"parts\":[\"file-service://%s\"]}}}\n\ndata: [DONE]\n\n", echoID)
 				case r.URL.Path == "/backend-api/conversation/image-25":
 					writeHTTPAPIGeneratedImageConversation(w, generatedID)
+				case r.URL.Path == "/backend-api/files/download/"+generatedID:
+					_ = json.NewEncoder(w).Encode(map[string]any{"download_url": upstream.URL + "/blob"})
 				case r.URL.Path == "/backend-api/files/"+generatedID+"/download":
 					_ = json.NewEncoder(w).Encode(map[string]any{"download_url": upstream.URL + "/blob"})
 				case r.URL.Path == "/blob":

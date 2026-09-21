@@ -7,7 +7,7 @@
         density="compact"
       />
 
-      <div class="register-runtime-actions" :class="{ 'register-runtime-actions--grok': target === 'grok' }">
+      <div class="register-runtime-actions">
         <Button
           block
           variant="primary"
@@ -24,16 +24,6 @@
         >
           重置
         </Button>
-        <FloatingActionMenu
-          v-if="target === 'grok'"
-          class="register-runtime-export-menu"
-          :label="exportBusy ? '导出中' : '导出账号'"
-          :items="grokExportItems"
-          :disabled="exportBusy"
-          align="right"
-          placement="auto"
-          @select="format => emit('export-grok', format === 'cpa' ? 'cpa' : 'sub2api')"
-        />
       </div>
 
       <SurfaceBox tone="muted" density="compact">
@@ -48,13 +38,13 @@
 
     <RuntimeLogPanel
       class="register-runtime-log"
-      :title="target === 'grok' ? '注册进度' : '实时日志'"
+      title="实时日志"
       :lines="activeLogLines"
       :empty-title="activeLogEmptyTitle"
       min-height="20rem"
       max-height="min(58vh, 38rem)"
     >
-      <template v-if="showLogTabs" #actions>
+      <template #actions>
         <ConsoleSegmentedTabs
           :model-value="activeLog"
           :options="logTabs"
@@ -72,11 +62,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { Button } from 'nanocat-ui'
 
 import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
-import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import MetricStrip from '@/components/ai/MetricStrip.vue'
 import RuntimeLogPanel from '@/components/ai/RuntimeLogPanel.vue'
@@ -88,57 +77,31 @@ const props = defineProps<{
   target: RegisterTarget
   enabled: boolean
   saving: boolean
-  exportBusy: boolean
   actionDisabled: boolean
   runtimeHint: string
   metricItems: RegisterMetricItem[]
   runtimeLogLines: RegisterRuntimeLogLine[]
-  grokOauthLogLines: RegisterRuntimeLogLine[]
   checkoutLogLines: RegisterRuntimeLogLine[]
 }>()
 
 const emit = defineEmits<{
   (e: 'toggle-task'): void
   (e: 'reset-stats'): void
-  (e: 'export-grok', format: 'cpa' | 'sub2api'): void
 }>()
 
 const resetDisabled = computed(() => props.saving || props.enabled)
-const grokExportItems = [
-  { key: 'sub2api', label: 'Sub2API 格式 (.json)' },
-  { key: 'cpa', label: 'CPA 格式 (.zip)' },
-]
-type RuntimeLogView = 'register' | 'oauth' | 'checkout'
+type RuntimeLogView = 'register' | 'checkout'
 const activeLog = ref<RuntimeLogView>('register')
-const showCheckoutLogTab = computed(() => props.target === 'openai' || props.checkoutLogLines.length > 0)
-const showOauthLogTab = computed(() => props.target === 'grok' || props.grokOauthLogLines.length > 0)
-const showLogTabs = computed(() => showCheckoutLogTab.value || showOauthLogTab.value)
-const logTabs = computed(() => [
+const logTabs = [
   { value: 'register', label: '注册日志' },
-  ...(showOauthLogTab.value ? [{ value: 'oauth', label: 'OAuth 日志' }] : []),
-  ...(showCheckoutLogTab.value ? [{ value: 'checkout', label: '提链日志' }] : []),
-])
-const activeLogLines = computed(() => (
-  activeLog.value === 'oauth'
-    ? props.grokOauthLogLines
-    : activeLog.value === 'checkout'
-      ? props.checkoutLogLines
-      : props.runtimeLogLines
-))
-const activeLogEmptyTitle = computed(() => {
-  if (activeLog.value === 'oauth') return '暂无 OAuth 日志'
-  if (activeLog.value === 'checkout') return '暂无提链日志'
-  return props.target === 'grok' ? '暂无注册进度' : '暂无注册日志'
-})
+  { value: 'checkout', label: '提链日志' },
+]
+const activeLogLines = computed(() => activeLog.value === 'checkout' ? props.checkoutLogLines : props.runtimeLogLines)
+const activeLogEmptyTitle = computed(() => activeLog.value === 'checkout' ? '暂无提链日志' : '暂无注册日志')
 
 function setActiveLog(value: string | number) {
-  activeLog.value = value === 'oauth' ? 'oauth' : value === 'checkout' ? 'checkout' : 'register'
+  activeLog.value = value === 'checkout' ? 'checkout' : 'register'
 }
-
-watch([showCheckoutLogTab, showOauthLogTab], ([checkoutVisible, oauthVisible]) => {
-  if (activeLog.value === 'checkout' && !checkoutVisible) activeLog.value = 'register'
-  if (activeLog.value === 'oauth' && !oauthVisible) activeLog.value = 'register'
-})
 </script>
 
 <style scoped>
@@ -198,27 +161,12 @@ watch([showCheckoutLogTab, showOauthLogTab], ([checkoutVisible, oauthVisible]) =
   gap: 8px;
 }
 
-.register-runtime-actions--grok {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.register-runtime-export-menu {
-  width: 100%;
-  min-width: 0;
-}
-
-.register-runtime-export-menu :deep(.floating-action-menu-trigger) {
-  width: 100%;
-  min-height: 32px;
-}
-
 @media (max-width: 640px) {
   .register-runtime-extension {
     min-height: 16rem;
   }
 
-  .register-runtime-actions,
-  .register-runtime-actions--grok {
+  .register-runtime-actions {
     grid-template-columns: 1fr;
     justify-content: flex-start;
   }

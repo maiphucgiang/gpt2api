@@ -53,7 +53,7 @@ function catalogFromOpenAIModels(response: ModelListResponse): ModelCatalogRespo
     object: 'model_catalog',
     chat_models: ids.filter(model => !isImageModelId(model)),
     image_models: ids.filter(model => isImageModelId(model)),
-    image_edit_models: ids.filter(model => isImageModelId(model) && (!model.startsWith('grok-') || model.includes('edit'))),
+    image_edit_models: ids.filter(model => isImageModelId(model)),
     video_models: ids.filter(model => model.toLowerCase().includes('video')),
     all_models: ids,
     source: {
@@ -79,7 +79,7 @@ export function useModelCatalog(resolveSettings: SettingsResolver) {
     const fromCatalog = normalizeList(sharedCatalog.value?.image_edit_models)
     return fromCatalog.length > 0
       ? fromCatalog
-      : imageModels.value.filter(model => !model.startsWith('grok-') || model.includes('edit'))
+      : imageModels.value
   })
 
   const videoModels = computed(() => normalizeList(sharedCatalog.value?.video_models))

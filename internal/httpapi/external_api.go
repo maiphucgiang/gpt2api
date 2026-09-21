@@ -167,7 +167,7 @@ func (s *Server) updateCPAJob(id string, job map[string]any) error {
 	items := s.external.listCPA()
 	for i := range items {
 		if items[i].ID == id {
-			items[i].ImportJob = job
+			items[i].ImportJob = cloneMap(job)
 			return s.external.saveCPAList(items)
 		}
 	}
@@ -184,8 +184,8 @@ func (s *Server) cpaRemoteFiles(pool externalCPAPool) ([]map[string]any, error) 
 	for _, value := range files {
 		if item, ok := value.(map[string]any); ok {
 			name := stringValue(item["name"])
-			if name != "" {
-				result = append(result, map[string]any{"name": name, "email": firstNonEmpty(stringValue(item["email"]), stringValue(item["account"]))})
+			if name != "" && isCodexCredential(item) {
+				result = append(result, map[string]any{"name": name, "provider": "codex", "type": "codex", "email": firstNonEmpty(stringValue(item["email"]), stringValue(item["account"]))})
 			}
 		}
 	}
@@ -199,22 +199,22 @@ func (s *Server) runCPAImport(pool externalCPAPool, names []string, job map[stri
 		payload, _, err := remoteJSON(remoteClient(true), http.MethodGet, pool.BaseURL+"/v0/management/auth-files/download", map[string]string{"Authorization": "Bearer " + pool.SecretKey, "Accept": "application/json"}, url.Values{"name": []string{name}}, nil)
 		if err != nil {
 			appendJobError(job, name, err.Error())
-		} else if token := stringValue(payload["access_token"]); token != "" {
-			added, skipped, _, addErr := s.store.AddAccounts([]string{token}, nil)
-			if addErr != nil {
+		} else {
+			added, skipped, addErr := s.importCPACredential(payload)
+			if errors.Is(addErr, errUnsupportedCPACredential) {
+				job["unsupported"] = intValue(job["unsupported"]) + 1
+			} else if addErr != nil {
 				appendJobError(job, name, addErr.Error())
 			} else {
 				job["added"] = intValue(job["added"]) + added
 				job["skipped"] = intValue(job["skipped"]) + skipped
 			}
-		} else {
-			appendJobError(job, name, "missing access_token")
 		}
 		job["completed"] = intValue(job["completed"]) + 1
 		update(map[string]any{})
 	}
 	status := "completed"
-	if intValue(job["added"]) == 0 && intValue(job["skipped"]) == 0 {
+	if intValue(job["added"])+intValue(job["skipped"])+intValue(job["unsupported"]) == 0 {
 		status = "failed"
 	}
 	update(map[string]any{"status": status})

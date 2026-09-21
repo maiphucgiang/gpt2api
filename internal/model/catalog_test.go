@@ -4,7 +4,7 @@ import "testing"
 
 func TestCatalogContainsCoreModels(t *testing.T) {
 	items := Catalog()
-	for _, id := range []string{"grok-4.20-fast", "grok-imagine-image", "grok-imagine-video"} {
+	for _, id := range []string{"gpt-5", "gpt-image-2", "gpt-image-2.5"} {
 		if _, ok := Find(items, id); !ok {
 			t.Fatalf("catalog missing %q", id)
 		}
@@ -19,7 +19,7 @@ func TestImageModelChatCompatibilityRoute(t *testing.T) {
 				t.Fatalf("%s must be listed as an image model, outside the normal chat catalog", id)
 			}
 			route, ok := ResolveChat(id)
-			if !ok || !route.OpenAI || !route.Image || route.Console {
+			if !ok || !route.OpenAI || !route.Image {
 				t.Fatalf("%s must use the OpenAI image chat-completions route: %+v", id, route)
 			}
 		})
@@ -27,7 +27,7 @@ func TestImageModelChatCompatibilityRoute(t *testing.T) {
 }
 
 func TestUnknownImageModelsAreNotRoutedToOpenAI(t *testing.T) {
-	for _, id := range []string{"gpt-image-2.50", "gpt-image-2.5-unknown", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-3", "grok-imagine-image"} {
+	for _, id := range []string{"gpt-image-2.50", "gpt-image-2.5-unknown", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-3", "unsupported-image"} {
 		if IsOpenAIImage(id) {
 			t.Errorf("unexpected OpenAI image model: %s", id)
 		}

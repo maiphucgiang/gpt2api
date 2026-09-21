@@ -24,6 +24,7 @@ export interface CPAImportJob {
   completed: number
   added: number
   skipped: number
+  unsupported?: number
   refreshed: number
   failed: number
   errors: Array<{ name: string; error: string }>
@@ -82,6 +83,9 @@ export interface Sub2APIImportGroupBinding {
 }
 
 export const accountImportsApi = {
+  importCPAAccounts: (accounts: Record<string, unknown>[]) =>
+    apiClient.post<{ accounts: Record<string, unknown>[] }, { added: number; skipped: number; unsupported: number; failed: number }>('/api/cpa/import', { accounts }),
+
   startOAuthLogin: (emailHint = '') =>
     apiClient.post<{ email_hint: string }, OAuthLoginStartResponse>(
       '/api/accounts/oauth/start',

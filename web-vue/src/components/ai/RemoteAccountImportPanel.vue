@@ -401,7 +401,7 @@ const emptyText = computed(() => {
 const progressText = computed(() => {
   const job = importJob.value
   if (!job) return '未开始导入'
-  return `进度 ${job.completed}/${job.total}，新增 ${job.added}，跳过 ${job.skipped}，刷新 ${job.refreshed}，失败 ${job.failed}`
+  return `进度 ${job.completed}/${job.total}，新增 ${job.added}，重复 ${job.skipped}，类型不支持 ${job.unsupported || 0}，刷新 ${job.refreshed}，失败 ${job.failed}`
 })
 
 watch(busy, (value) => emit('busy-change', value))
@@ -872,8 +872,9 @@ async function startSub2APIImport() {
 
 function showImportResult(prefix: string, job: CPAImportJob | null) {
   const failed = Number(job?.failed || 0)
-  toast[failed > 0 ? 'warning' : 'success'](
-    `${prefix}：新增 ${job?.added || 0}，跳过 ${job?.skipped || 0}，刷新 ${job?.refreshed || 0}，失败 ${failed}`,
+  const unsupported = Number(job?.unsupported || 0)
+  toast[failed > 0 || unsupported > 0 ? 'warning' : 'success'](
+    `${prefix}：新增 ${job?.added || 0}，重复 ${job?.skipped || 0}，类型不支持 ${unsupported}，刷新 ${job?.refreshed || 0}，失败 ${failed}`,
   )
 }
 </script>

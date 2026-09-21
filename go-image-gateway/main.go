@@ -822,7 +822,7 @@ func truncate(err error) string {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println("chatgpt2api-image-gateway reservation-sync 1.0")
+		fmt.Println("gpt2api-image-gateway reservation-sync 1.0")
 		return
 	}
 	cfg := loadConfig()

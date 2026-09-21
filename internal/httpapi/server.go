@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -21,141 +20,90 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/agentidentity"
-	"github.com/auucoder/gptgrok2api-go/internal/auth"
-	"github.com/auucoder/gptgrok2api-go/internal/config"
-	"github.com/auucoder/gptgrok2api-go/internal/model"
-	"github.com/auucoder/gptgrok2api-go/internal/oauth"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
-	"github.com/auucoder/gptgrok2api-go/internal/provider"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
-	registerruntime "github.com/auucoder/gptgrok2api-go/internal/register"
-	"github.com/auucoder/gptgrok2api-go/internal/store"
-	"github.com/auucoder/gptgrok2api-go/internal/tasks"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/agentidentity"
+	"github.com/maiphucgiang/gpt2api/internal/auth"
+	"github.com/maiphucgiang/gpt2api/internal/config"
+	"github.com/maiphucgiang/gpt2api/internal/model"
+	"github.com/maiphucgiang/gpt2api/internal/oauth"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
+	"github.com/maiphucgiang/gpt2api/internal/provider"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
+	registerruntime "github.com/maiphucgiang/gpt2api/internal/register"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 type Server struct {
-	cfg                config.Config
-	auth               *auth.Validator
-	store              *store.Store
-	catalog            []model.Spec
-	client             *http.Client
-	requestClient      *http.Client
-	accountPool        *accounts.Pool
-	chatProvider       *provider.GrokChat
-	consoleProvider    *provider.ConsoleChat
-	mediaProvider      *provider.Media
-	openAIImage        *provider.OpenAIImage
-	openAIChat         *provider.OpenAIChat
-	gptMail            *provider.GPTMail
-	xaiProbe           *provider.XAIProbe
-	grokQuota          *provider.GrokQuota
-	proxyManager       *proxyruntime.Manager
-	oauthStore         *oauth.Store
-	openAILogin        *oauth.OpenAILogin
-	agentIdentityStore *agentidentity.Store
-	deviceOAuth        *oauth.DeviceService
-	taskQueue          tasks.QueueAPI
-	registerStore      *registerruntime.Store
-	registerRuntime    *registerruntime.Runtime
-	monitor            *runtimeMonitor
-	logMu              sync.Mutex
-	videoMu            sync.RWMutex
-	videoJobs          map[string]*videoJob
-	imageTaskMu        sync.RWMutex
-	imageTasks         map[string]*imageTaskState
-	imageSlots         chan struct{}
-	fileTaskMu         sync.RWMutex
-	fileTasks          map[string]*editableFileTaskState
-	schedulerMu        sync.Mutex
-	schedulerLeases    map[string]map[string]any
-	external           *externalManager
-	refreshMu          sync.RWMutex
-	refreshProgress    map[string]*accountRefreshProgress
-	survivalMu         sync.RWMutex
-	survivalStatus     map[string]any
-	survivalRunning    bool
-	survivalWake       chan struct{}
-	probeStop          chan struct{}
-	probeWake          chan struct{}
-	proxyProbeURL      string
+	cfg                   config.Config
+	auth                  *auth.Validator
+	store                 *store.Store
+	catalog               []model.Spec
+	client                *http.Client
+	requestClient         *http.Client
+	accountPool           *accounts.Pool
+	openAIImage           *provider.OpenAIImage
+	openAIChat            *provider.OpenAIChat
+	gptMail               *provider.GPTMail
+	proxyManager          *proxyruntime.Manager
+	openAILogin           *oauth.OpenAILogin
+	agentIdentityStore    *agentidentity.Store
+	registerStore         *registerruntime.Store
+	registerRuntime       *registerruntime.Runtime
+	monitor               *runtimeMonitor
+	logMu                 sync.Mutex
+	imageTaskMu           sync.RWMutex
+	imageTasks            map[string]*imageTaskState
+	imageSlots            chan struct{}
+	fileTaskMu            sync.RWMutex
+	fileTasks             map[string]*editableFileTaskState
+	schedulerMu           sync.Mutex
+	schedulerLeases       map[string]map[string]any
+	external              *externalManager
+	refreshMu             sync.RWMutex
+	refreshProgress       map[string]*accountRefreshProgress
+	accountRefreshMu      sync.Mutex
+	accountRefreshFlights map[string]*accountRefreshFlight
+	backgroundContext     context.Context
+	backgroundCancel      context.CancelFunc
+	backgroundWorkers     sync.WaitGroup
+	survivalMu            sync.RWMutex
+	survivalStatus        map[string]any
+	survivalRunning       bool
+	survivalWake          chan struct{}
+	proxyProbeURL         string
 }
 
 func New(cfg config.Config) *Server {
+	backgroundContext, backgroundCancel := context.WithCancel(context.Background())
 	repository := store.New(cfg.AccountsPath, cfg.AuthKeysPath, cfg.ConfigPath)
 	proxyManager := proxyruntime.NewManager(cfg.ProxyURL, cfg.ProxyPool)
-	groups := runtimeProxyGroups(cfg.ProxyGroups)
-	proxyManager.ConfigureImageGroups(cfg.FallbackProxy, groups)
+	proxyManager.ConfigureImageGroups(cfg.FallbackProxy, runtimeProxyGroups(cfg.ProxyGroups))
 	proxyManager.SetResource(cfg.ResourceProxyURL, cfg.ResourceProxyPool)
 	proxyManager.SetUpstreamsFile(cfg.ProxyUpstreamsFile)
-	proxyTransport := proxyruntime.NewTransport(http.DefaultTransport)
-	requestClient := &http.Client{Transport: proxyTransport, Timeout: cfg.RequestTimeout}
-	var taskQueue tasks.QueueAPI = tasks.New(cfg.QueuePath)
-	if cfg.QueueBackend == "redis" {
-		redisQueue := tasks.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB, "gptgrok2api")
-		if err := redisQueue.Ping(); err != nil {
-			log.Printf("Redis queue unavailable, using JSON queue: %v", err)
-		} else {
-			taskQueue = redisQueue
-		}
-	}
+	requestClient := &http.Client{Transport: proxyruntime.NewTransport(http.DefaultTransport), Timeout: cfg.RequestTimeout}
 	server := &Server{
-		cfg:                cfg,
-		auth:               auth.New(cfg.APIKey, cfg.AdminKey, cfg.AuthKeysPath, cfg.AllowAnonymous, repository),
-		store:              repository,
-		catalog:            model.Catalog(),
-		client:             &http.Client{Timeout: 0},
-		requestClient:      requestClient,
-		accountPool:        accounts.New(repository),
-		chatProvider:       provider.NewGrokChat(cfg.GrokChatURL, requestClient, cfg.RequestTimeout),
-		consoleProvider:    provider.NewConsoleChat(cfg.ConsoleURL, requestClient),
-		mediaProvider:      provider.NewMedia(requestClient, cfg.MediaChatURL, cfg.MediaPostURL, cfg.AssetUploadURL, cfg.AssetsBaseURL, cfg.RequestTimeout),
-		openAIImage:        provider.NewOpenAIImage(cfg.OpenAIBaseURL, requestClient, proxyManager, cfg.RequestTimeout),
-		gptMail:            provider.NewGPTMail(requestClient),
-		xaiProbe:           provider.NewXAIProbe(cfg.XAICLIBaseURL, cfg.XAICLITokenURL, requestClient),
-		grokQuota:          provider.NewGrokQuota(cfg.GrokRateLimitsURL, requestClient, proxyManager),
-		proxyManager:       proxyManager,
-		videoJobs:          map[string]*videoJob{},
-		imageTasks:         map[string]*imageTaskState{},
-		imageSlots:         makeImageSlots(cfg.ImageMaxConcurrency),
-		fileTasks:          map[string]*editableFileTaskState{},
-		schedulerLeases:    map[string]map[string]any{},
-		external:           newExternalManager(cfg.DataDir),
-		refreshProgress:    map[string]*accountRefreshProgress{},
+		cfg: cfg, backgroundContext: backgroundContext, backgroundCancel: backgroundCancel,
+		auth:  auth.New(cfg.APIKey, cfg.AdminKey, cfg.AuthKeysPath, cfg.AllowAnonymous, repository),
+		store: repository, catalog: model.Catalog(), client: &http.Client{}, requestClient: requestClient,
+		accountPool: accounts.New(repository),
+		openAIImage: provider.NewOpenAIImage(cfg.OpenAIBaseURL, requestClient, proxyManager, cfg.RequestTimeout),
+		gptMail:     provider.NewGPTMail(requestClient), proxyManager: proxyManager,
+		imageTasks: map[string]*imageTaskState{}, imageSlots: makeImageSlots(cfg.ImageMaxConcurrency),
+		fileTasks: map[string]*editableFileTaskState{}, schedulerLeases: map[string]map[string]any{},
+		external: newExternalManager(cfg.DataDir), refreshProgress: map[string]*accountRefreshProgress{},
 		survivalStatus:     map[string]any{"running": false, "last_started_at": "", "last_finished_at": "", "last_error": "", "last_summary": map[string]any{}, "next_run_at": ""},
 		survivalWake:       make(chan struct{}, 1),
-		probeStop:          make(chan struct{}),
-		probeWake:          make(chan struct{}, 1),
-		oauthStore:         oauth.NewStore(cfg.OAuthPath, firstNonEmpty(cfg.AdminKey, cfg.APIKey, "gptgrok2api")),
 		openAILogin:        oauth.NewOpenAILogin(cfg.OpenAIAuthBaseURL, cfg.OpenAIPlatformBaseURL, cfg.OpenAILoginTokenURL, requestClient),
 		agentIdentityStore: agentidentity.NewStore(cfg.DataDir, cfg.OpenAIAgentRegisterURL, requestClient),
-		taskQueue:          taskQueue,
-		monitor:            newRuntimeMonitor(),
-		registerStore:      registerruntime.New(cfg.RegisterPath, cfg.GrokAccountsPath),
-		registerRuntime:    registerruntime.NewRuntime(),
+		monitor:            newRuntimeMonitor(), registerStore: registerruntime.New(cfg.RegisterPath), registerRuntime: registerruntime.NewRuntime(),
 	}
 	server.openAIChat = provider.NewOpenAIChat(server.openAIImage)
 	proxyManager.SetImageNodeResultCallback(server.persistProxyGroupRuntimeResult)
 	server.accountPool.SetInvalidCallback(server.maybeAutoRemoveInvalidAccount)
 	server.loadEditableFileTasks()
-	server.chatProvider.SetProxyManager(proxyManager)
-	server.consoleProvider.SetProxyManager(proxyManager)
-	server.mediaProvider.SetProxyManager(proxyManager)
-	server.deviceOAuth = oauth.NewDeviceService(requestClient, cfg.OAuthDeviceURL, cfg.OAuthTokenURL, server.oauthStore)
-	server.taskQueue.Register("grok_oauth_authorize", func(task *tasks.Task) (map[string]any, error) {
-		accountID := stringValue(task.Payload["account_id"])
-		_, _ = server.registerStore.SetOAuthAuthorization(accountID, "manual_action_required", "")
-		return map[string]any{
-			"status":     "manual_action_required",
-			"message":    "请使用 /api/grok/oauth/device/start 完成 xAI Device Code 授权",
-			"account_id": task.Payload["account_id"],
-		}, nil
-	})
 	if cfg.Version != "test" {
-		server.taskQueue.Start(2)
+		server.backgroundWorkers.Add(2)
 		go server.imageRetentionScheduler()
-		go server.grokProbeScheduler()
 		go server.openAISurvivalScheduler()
 	}
 	return server
@@ -274,11 +222,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/files/video", s.videoFile)
 	mux.HandleFunc("/upimg/v1/files/image", s.imageFile)
 	mux.HandleFunc("/upimg/v1/files/video", s.videoFile)
-	mux.HandleFunc("/v1/files", s.files)
-	mux.HandleFunc("/v1/videos", s.videosCreate)
-	mux.HandleFunc("/v1/videos/", s.videoByID)
 	mux.HandleFunc("/v1/", s.v1)
-	mux.HandleFunc("/grok/", s.grok)
 	mux.HandleFunc("/auth/login", s.login)
 	mux.HandleFunc("/auth/status", s.authStatus)
 	mux.HandleFunc("/version", s.version)
@@ -323,11 +267,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/image-tasks/edits", s.imageTaskEdits)
 	mux.HandleFunc("/api/image-tasks/", s.imageTaskByID)
 	mux.HandleFunc("/api/storage/info", s.storageInfo)
-	mux.HandleFunc("/api/grok/oauth/", s.grokOAuth)
-	mux.HandleFunc("/accounts", s.grokOAuthLegacy)
-	mux.HandleFunc("/accounts/", s.grokOAuthLegacy)
-	mux.HandleFunc("/device/", s.grokOAuthLegacy)
-	mux.HandleFunc("/protocol/", s.grokOAuthProtocolLegacy)
 	mux.HandleFunc("/api/proxy/profiles", s.proxyProfiles)
 	mux.HandleFunc("/api/proxy/profiles/", s.proxyProfileByID)
 	mux.HandleFunc("/api/proxy/groups", s.proxyGroups)
@@ -353,13 +292,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/backups/", s.backupsAPI)
 	mux.HandleFunc("/api/register", s.registerAPI)
 	mux.HandleFunc("/api/register/", s.registerAPI)
+	mux.HandleFunc("/api/cpa/import", s.cpaLocalImport)
 	mux.HandleFunc("/api/cpa/pools", s.cpaPoolsAPI)
 	mux.HandleFunc("/api/cpa/pools/", s.cpaPoolAPI)
 	mux.HandleFunc("/api/sub2api/servers", s.sub2APIServersAPI)
 	mux.HandleFunc("/api/sub2api/servers/", s.sub2APIServerAPI)
-	mux.HandleFunc("/api/grok/runtime/admin/", s.grokRuntimeAdminAPI)
-	mux.HandleFunc("/api/tasks", s.taskAPI)
-	mux.HandleFunc("/api/tasks/", s.taskAPI)
 	mux.HandleFunc("/internal/image-monitor/", s.internalImageMonitor)
 	mux.HandleFunc("/internal/image-scheduler/", s.internalImageScheduler)
 	mux.HandleFunc("/internal/logs/call", s.internalCallLog)
@@ -731,7 +668,6 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 		"runtime":             "go",
 		"version":             s.cfg.Version,
 		"upstream_configured": s.cfg.UpstreamURL != "",
-		"queue_backend":       s.cfg.QueueBackend,
 		"proxy":               s.proxyManager.Snapshot(),
 		"timestamp":           time.Now().UTC(),
 	})
@@ -811,10 +747,6 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "model not found", "invalid_request_error")
 		return
 	}
-	if route.Console {
-		s.consoleChatCompletions(w, r, request)
-		return
-	}
 	if route.Image {
 		if request.Stream {
 			s.streamOpenAIImageChat(w, r, request)
@@ -823,276 +755,19 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if route.OpenAI {
-		if request.Stream {
-			s.streamOpenAIChat(w, r, request, route)
-		} else {
-			s.completeOpenAIChat(w, r, request, route)
-		}
-		return
-	}
-	if len(request.Tools) > 0 || request.ToolChoice != nil {
-		if request.Stream {
-			s.streamToolChat(w, r, request, route)
-		} else {
-			s.completeChat(w, r, request, route)
-		}
-		return
-	}
 	if request.Stream {
-		s.streamChat(w, r, request, route)
-		return
+		s.streamOpenAIChat(w, r, request, route)
+	} else {
+		s.completeOpenAIChat(w, r, request, route)
 	}
-	s.completeChat(w, r, request, route)
 }
 
 func (s *Server) completeChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
-	message := protocol.ExtractMessage(request.Messages)
-	if strings.TrimSpace(message) == "" {
-		writeError(w, http.StatusBadRequest, "messages contain no text", "invalid_request_error")
+	if route.Image {
+		s.completeOpenAIImageChat(w, r, request)
 		return
 	}
-	if len(request.Tools) > 0 {
-		message = protocol.InjectToolPrompt(message, protocol.BuildToolSystemPrompt(request.Tools, request.ToolChoice))
-	}
-	responseID := newChatID()
-	excluded := map[string]bool{}
-	var text, thinking string
-	var lastErr error
-	for attempt := 0; attempt <= s.cfg.ChatMaxRetries; attempt++ {
-		lease, err := s.accountPool.Reserve(r.Context(), route.PoolCandidates, excluded)
-		if err != nil {
-			lastErr = err
-			break
-		}
-		s.enrichMonitorAccount(r, lease.Account)
-		payload := protocol.BuildGrokPayload(message, route.Mode, request.Temperature, request.TopP, request.MaxTokens)
-		response, err := s.chatProvider.Do(r.Context(), lease.Account, payload)
-		if err != nil {
-			s.accountPool.Release(lease)
-			s.accountPool.Feedback(lease.Account, http.StatusBadGateway, err)
-			excluded[lease.Account.Token] = true
-			lastErr = err
-			if attempt < s.cfg.ChatMaxRetries {
-				continue
-			}
-			break
-		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			upstreamErr := provider.ReadError(response)
-			s.accountPool.Release(lease)
-			s.accountPool.Feedback(lease.Account, upstreamErr.Status, upstreamErr)
-			excluded[lease.Account.Token] = true
-			lastErr = upstreamErr
-			if s.shouldRetry(upstreamErr.Status, attempt) {
-				continue
-			}
-			break
-		}
-		var scanErr error
-		scanner := bufio.NewScanner(response.Body)
-		scanner.Buffer(make([]byte, 4096), 2<<20)
-		scanErr = protocol.ScanUpstream(scanner, func(event protocol.UpstreamEvent) error {
-			text += event.Text
-			thinking += event.Thinking
-			return nil
-		})
-		response.Body.Close()
-		s.accountPool.Release(lease)
-		if scanErr != nil {
-			s.accountPool.Feedback(lease.Account, http.StatusBadGateway, scanErr)
-			excluded[lease.Account.Token] = true
-			lastErr = scanErr
-			if attempt < s.cfg.ChatMaxRetries {
-				text, thinking = "", ""
-				continue
-			}
-			break
-		}
-		s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
-		lastErr = nil
-		break
-	}
-	if lastErr != nil {
-		status := http.StatusBadGateway
-		if errors.Is(lastErr, accounts.ErrUnavailable) {
-			status = http.StatusTooManyRequests
-		}
-		if upstreamErr, ok := lastErr.(*protocol.UpstreamError); ok && upstreamErr.Status >= 400 && upstreamErr.Status < 600 {
-			status = upstreamErr.Status
-		}
-		writeError(w, status, lastErr.Error(), "upstream_error")
-		return
-	}
-	response := map[string]any{
-		"id":      newChatIDFrom(responseID),
-		"object":  "chat.completion",
-		"created": time.Now().Unix(),
-		"model":   request.Model,
-		"choices": []any{map[string]any{
-			"index":         0,
-			"message":       map[string]any{"role": "assistant", "content": text},
-			"finish_reason": "stop",
-		}},
-		"usage": usageFor(message, text, thinking),
-	}
-	if thinking != "" {
-		response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["reasoning_content"] = thinking
-	}
-	if len(request.Tools) > 0 {
-		calls := protocol.ParseToolCalls(text, protocol.ToolNames(request.Tools))
-		if len(calls) > 0 {
-			toolCalls := make([]map[string]any, 0, len(calls))
-			for _, call := range calls {
-				toolCalls = append(toolCalls, map[string]any{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": call.Arguments}})
-			}
-			choice := response["choices"].([]any)[0].(map[string]any)
-			choice["message"] = map[string]any{"role": "assistant", "content": nil, "tool_calls": toolCalls}
-			choice["finish_reason"] = "tool_calls"
-		}
-	}
-	writeJSON(w, http.StatusOK, response)
-}
-
-func (s *Server) streamToolChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
-	recorder := &responseCapture{header: make(http.Header)}
-	request.Stream = false
-	s.completeChat(recorder, r, request, route)
-	if recorder.status >= 400 {
-		w.WriteHeader(recorder.status)
-		_, _ = w.Write(recorder.body.Bytes())
-		return
-	}
-	var response map[string]any
-	if json.Unmarshal(recorder.body.Bytes(), &response) != nil {
-		writeError(w, http.StatusBadGateway, "invalid internal tool response", "server_error")
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	choice := response["choices"].([]any)[0].(map[string]any)
-	message, _ := choice["message"].(map[string]any)
-	if calls, ok := message["tool_calls"].([]any); ok {
-		for index, raw := range calls {
-			call, _ := raw.(map[string]any)
-			function, _ := call["function"].(map[string]any)
-			writeSSE(w, map[string]any{"id": response["id"], "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": index, "id": call["id"], "type": "function", "function": map[string]any{"name": function["name"], "arguments": function["arguments"]}}}}}}})
-		}
-		writeSSE(w, map[string]any{"id": response["id"], "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}}})
-	} else {
-		writeSSE(w, map[string]any{"id": response["id"], "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": message["content"]}}}})
-		writeSSE(w, map[string]any{"id": response["id"], "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}})
-	}
-	_, _ = io.WriteString(w, "data: [DONE]\n\n")
-}
-
-func (s *Server) streamChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
-	message := protocol.ExtractMessage(request.Messages)
-	if strings.TrimSpace(message) == "" {
-		writeError(w, http.StatusBadRequest, "messages contain no text", "invalid_request_error")
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	flusher, _ := w.(http.Flusher)
-	responseID := newChatID()
-	excluded := map[string]bool{}
-	emitted := false
-	var lastErr error
-	for attempt := 0; attempt <= s.cfg.ChatMaxRetries; attempt++ {
-		lease, err := s.accountPool.Reserve(r.Context(), route.PoolCandidates, excluded)
-		if err != nil {
-			lastErr = err
-			break
-		}
-		s.enrichMonitorAccount(r, lease.Account)
-		payload := protocol.BuildGrokPayload(message, route.Mode, request.Temperature, request.TopP, request.MaxTokens)
-		response, err := s.chatProvider.Do(r.Context(), lease.Account, payload)
-		if err != nil {
-			s.accountPool.Release(lease)
-			s.accountPool.Feedback(lease.Account, http.StatusBadGateway, err)
-			excluded[lease.Account.Token] = true
-			lastErr = err
-			if !emitted && attempt < s.cfg.ChatMaxRetries {
-				continue
-			}
-			break
-		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			upstreamErr := provider.ReadError(response)
-			s.accountPool.Release(lease)
-			s.accountPool.Feedback(lease.Account, upstreamErr.Status, upstreamErr)
-			excluded[lease.Account.Token] = true
-			lastErr = upstreamErr
-			if !emitted && s.shouldRetry(upstreamErr.Status, attempt) {
-				continue
-			}
-			break
-		}
-		scanner := bufio.NewScanner(response.Body)
-		scanner.Buffer(make([]byte, 4096), 2<<20)
-		scanErr := protocol.ScanUpstream(scanner, func(event protocol.UpstreamEvent) error {
-			if event.Text == "" && event.Thinking == "" && !event.SoftStop {
-				return nil
-			}
-			if !emitted {
-				writeSSE(w, map[string]any{
-					"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model,
-					"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": ""}}},
-				})
-				emitted = true
-			}
-			if event.Text != "" {
-				writeSSE(w, map[string]any{
-					"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model,
-					"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": event.Text}}},
-				})
-			}
-			if event.Thinking != "" && request.ReasoningEffort != "none" {
-				writeSSE(w, map[string]any{
-					"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model,
-					"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"reasoning_content": event.Thinking}}},
-				})
-			}
-			if flusher != nil {
-				flusher.Flush()
-			}
-			return nil
-		})
-		response.Body.Close()
-		s.accountPool.Release(lease)
-		if scanErr != nil {
-			s.accountPool.Feedback(lease.Account, http.StatusBadGateway, scanErr)
-			excluded[lease.Account.Token] = true
-			lastErr = scanErr
-			if !emitted && attempt < s.cfg.ChatMaxRetries {
-				continue
-			}
-			break
-		}
-		s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
-		lastErr = nil
-		break
-	}
-	if lastErr != nil {
-		writeSSE(w, map[string]any{"error": map[string]any{"message": lastErr.Error(), "type": "upstream_error"}})
-	}
-	if !emitted {
-		writeSSE(w, map[string]any{
-			"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model,
-			"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": ""}}},
-		})
-	}
-	writeSSE(w, map[string]any{
-		"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model,
-		"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}},
-	})
-	_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	if flusher != nil {
-		flusher.Flush()
-	}
+	s.completeOpenAIChat(w, r, request, route)
 }
 
 func (s *Server) shouldRetry(status, attempt int) bool {
@@ -1124,13 +799,6 @@ func usageFor(prompt, completion, reasoning string) map[string]any {
 		"completion_tokens": completionTokens + reasoningTokens,
 		"total_tokens":      promptTokens + completionTokens + reasoningTokens,
 	}
-}
-
-func (s *Server) grok(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAPI(w, r) {
-		return
-	}
-	writeError(w, http.StatusNotFound, "Grok endpoint not found", "not_found")
 }
 
 func (s *Server) adminAPI(w http.ResponseWriter, r *http.Request) {
@@ -2319,7 +1987,7 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(candidate); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error": "frontend assets are not built",
-			"hint":  "run npm --prefix web-vue run build:server",
+			"hint":  "run pnpm --dir web-vue run build:server",
 		})
 		return
 	}

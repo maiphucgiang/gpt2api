@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
 )
 
 func TestOpenAIChatPayloadUsesRawMessageText(t *testing.T) {

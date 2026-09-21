@@ -1,19 +1,106 @@
+name: gpt2api
+
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: gptgrok2api-redis
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${GPT2API_IMAGE:-gpt2api:local}
+    user: "${GPT2API_UID:-10001}:${GPT2API_GID:-10001}"
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${GPT2API_BIND:-127.0.0.1}:${GPT2API_PORT:-3000}:80"
     volumes:
-      - ./data/redis:/data
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      GPT2API_AUTH_KEY: ${GPT2API_AUTH_KEY:-${CHATGPT2API_AUTH_KEY:-}}
+      GPT2API_ADMIN_KEY: ${GPT2API_ADMIN_KEY:-${CHATGPT2API_ADMIN_KEY:-}}
+      GPT2API_WEBUI_KEY: ${GPT2API_WEBUI_KEY:-${CHATGPT2API_WEBUI_KEY:-}}
+      GO_PUBLIC_BASE_URL: ${GO_PUBLIC_BASE_URL:-}
+      GO_REQUEST_TIMEOUT_SECONDS: ${GO_REQUEST_TIMEOUT_SECONDS:-180}
+      GO_CHAT_MAX_RETRIES: ${GO_CHAT_MAX_RETRIES:-2}
+      GO_IMAGE_ACCOUNT_CONCURRENCY: ${GO_IMAGE_ACCOUNT_CONCURRENCY:-1}
+      GO_IMAGE_MAX_CONCURRENCY: ${GO_IMAGE_MAX_CONCURRENCY:-128}
+      GO_IMAGE_RETENTION_DAYS: ${GO_IMAGE_RETENTION_DAYS:-1}
+      GO_PROXY_URL: ${GO_PROXY_URL:-}
+      GO_PROXY_POOL: ${GO_PROXY_POOL:-}
+      GO_RESOURCE_PROXY_URL: ${GO_RESOURCE_PROXY_URL:-}
+      GO_RESOURCE_PROXY_POOL: ${GO_RESOURCE_PROXY_POOL:-}
+      GO_FLARESOLVERR_URL: ${GO_FLARESOLVERR_URL:-}
+      GO_CLEARANCE_ENABLED: ${GO_CLEARANCE_ENABLED:-false}
+      GO_UPSTREAM_URL: ${GO_UPSTREAM_URL:-}
+      GO_UPSTREAM_API_KEY: ${GO_UPSTREAM_API_KEY:-}
+      GO_IMAGE_SCHEDULER_KEY: ${IMAGE_SCHEDULER_INTERNAL_KEY:-}
+      ICLOUD_PRIVACY_MAIL_BASE_URL: http://icloud-privacy-mail:8787
+      ICLOUD_PRIVACY_MAIL_API_KEY: ${ICLOUD_PRIVACY_MAIL_API_KEY:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  image-queue-redis:
+    profiles: ["images"]
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "2gb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - ./data/go-image-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  image-gateway:
+    profiles: ["images"]
+    build:
+      context: ./go-image-gateway
+    image: gpt2api/image-gateway:local
+    restart: unless-stopped
+    depends_on:
+      image-queue-redis:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${IMAGE_GATEWAY_PORT:-3001}:8080"
+    environment:
+      IMAGE_GATEWAY_REDIS_ADDR: image-queue-redis:6379
+      IMAGE_GATEWAY_BACKEND_URL: http://app/v1/images/generations
+      IMAGE_GATEWAY_SCHEDULER_URL: http://app/internal/image-scheduler
+      IMAGE_GATEWAY_MONITOR_URL: http://app/internal/image-monitor
+      IMAGE_GATEWAY_LOG_URL: http://app/internal/logs/call
+      IMAGE_GATEWAY_SCHEDULER_KEY: ${IMAGE_SCHEDULER_INTERNAL_KEY:-}
+      IMAGE_GATEWAY_AUTH_KEYS_FILE: /etc/image-gateway/auth_keys.json
+      IMAGE_GATEWAY_AUTH_KEY: ${GPT2API_AUTH_KEY:-${CHATGPT2API_AUTH_KEY:-}}
+      IMAGE_GATEWAY_WORKERS: ${IMAGE_GATEWAY_WORKERS:-8}
+      IMAGE_GATEWAY_QUEUE_CAPACITY: ${IMAGE_GATEWAY_QUEUE_CAPACITY:-1000}
+      IMAGE_GATEWAY_BACKEND_TIMEOUT_SECS: ${IMAGE_GATEWAY_BACKEND_TIMEOUT_SECS:-900}
+      IMAGE_GATEWAY_TASK_TTL_SECS: ${IMAGE_GATEWAY_TASK_TTL_SECS:-86400}
+      IMAGE_GATEWAY_MAX_ATTEMPTS: ${IMAGE_GATEWAY_MAX_ATTEMPTS:-1}
+      IMAGE_GATEWAY_MAX_BODY_MB: ${IMAGE_GATEWAY_MAX_BODY_MB:-25}
+    volumes:
+      - type: bind
+        source: ./data/auth_keys.json
+        target: /etc/image-gateway/auth_keys.json
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   icloud-privacy-mail:
     profiles: ["local-icloud"]
     build:
       context: .
       dockerfile: deploy/icloud-privacy-mail/Dockerfile
-    image: ${ICLOUD_PRIVACY_MAIL_IMAGE:-chatgpt2api/icloud-privacy-mail:2026.07.14.1}
-    container_name: chatgpt2api-icloud-privacy-mail
+    image: gpt2api/icloud-privacy-mail:local
     restart: unless-stopped
     environment:
       IPM_API_KEY: ${ICLOUD_PRIVACY_MAIL_API_KEY:-}
@@ -26,53 +113,7 @@ services:
     volumes:
       - ./data/icloud-privacy-mail:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8787/login >/dev/null || exit 1"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/login"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 10s
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${CHATGPT2API_IMAGE:-gptgrok2api-go:local}
-    container_name: chatgpt2api
-    restart: unless-stopped
-    ports:
-      - "${CHATGPT2API_PORT:-3000}:80"
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./config.json:/app/config.json:ro
-    environment:
-      CHATGPT2API_AUTH_KEY: ${CHATGPT2API_AUTH_KEY:-}
-      CHATGPT2API_ADMIN_KEY: ${CHATGPT2API_ADMIN_KEY:-}
-      CHATGPT2API_WEBUI_KEY: ${CHATGPT2API_WEBUI_KEY:-}
-      GO_CONFIG_PATH: ${GO_CONFIG_PATH:-/app/data/config.json}
-      GO_PUBLIC_BASE_URL: ${GO_PUBLIC_BASE_URL:-}
-      GO_TRUST_REQUEST_PUBLIC_BASE: ${GO_TRUST_REQUEST_PUBLIC_BASE:-false}
-      GO_REQUEST_TIMEOUT_SECONDS: ${GO_REQUEST_TIMEOUT_SECONDS:-600}
-      GO_CHAT_MAX_RETRIES: ${GO_CHAT_MAX_RETRIES:-2}
-      GO_IMAGE_ACCOUNT_CONCURRENCY: ${GO_IMAGE_ACCOUNT_CONCURRENCY:-1}
-      GO_IMAGE_MAX_CONCURRENCY: ${GO_IMAGE_MAX_CONCURRENCY:-128}
-      GO_CHAT_RETRY_CODES: ${GO_CHAT_RETRY_CODES:-401,403,429,500,502,503}
-      GO_ACCOUNT_REFRESH_CONCURRENCY: ${GO_ACCOUNT_REFRESH_CONCURRENCY:-3}
-      GO_ALLOW_ANONYMOUS: ${GO_ALLOW_ANONYMOUS:-false}
-      GO_QUEUE_BACKEND: ${GO_QUEUE_BACKEND:-redis}
-      GO_REDIS_ADDR: ${GO_REDIS_ADDR:-redis:6379}
-      GO_REDIS_PASSWORD: ${GO_REDIS_PASSWORD:-}
-      GO_REDIS_DB: ${GO_REDIS_DB:-0}
-      GO_PROXY_URL: ${GO_PROXY_URL:-}
-      GO_PROXY_POOL: ${GO_PROXY_POOL:-}
-      GO_RESOURCE_PROXY_URL: ${GO_RESOURCE_PROXY_URL:-}
-      GO_RESOURCE_PROXY_POOL: ${GO_RESOURCE_PROXY_POOL:-}
-      GO_ALLOW_PRIVATE_IMAGE_URLS: ${GO_ALLOW_PRIVATE_IMAGE_URLS:-false}
-      GO_FLARESOLVERR_URL: ${GO_FLARESOLVERR_URL:-}
-      GO_CLEARANCE_ENABLED: ${GO_CLEARANCE_ENABLED:-false}
-      GO_CLEARANCE_TIMEOUT_SECONDS: ${GO_CLEARANCE_TIMEOUT_SECONDS:-60}
-      ICLOUD_PRIVACY_MAIL_BASE_URL: ${ICLOUD_PRIVACY_MAIL_BASE_URL:-http://icloud-privacy-mail:8787}
-      ICLOUD_PRIVACY_MAIL_API_KEY: ${ICLOUD_PRIVACY_MAIL_API_KEY:-}
-      TZ: ${TZ:-Asia/Shanghai}
-    depends_on:
-      - redis

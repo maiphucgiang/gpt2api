@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/store"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 func TestPoolRoundRobinAndFailureCooldown(t *testing.T) {

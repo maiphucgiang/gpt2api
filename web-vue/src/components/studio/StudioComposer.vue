@@ -473,7 +473,6 @@ function compactModelLabel(model: string) {
   const normalized = String(model || '').trim()
   if (!normalized || normalized === 'auto') return '自动'
   if (/^gpt-/i.test(normalized)) return `GPT ${normalized.replace(/^gpt-/i, '')}`
-  if (/^grok-/i.test(normalized)) return `Grok ${normalized.replace(/^grok-/i, '')}`
   return normalized
 }
 

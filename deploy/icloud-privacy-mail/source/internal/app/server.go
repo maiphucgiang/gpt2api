@@ -4444,7 +4444,6 @@ func (s *Server) publicMailbox(r *http.Request, mailbox Mailbox) publicMailbox {
 		ICloudActive:   mailbox.ICloudActive,
 		ReceiveCount:   mailbox.ReceiveCount,
 		OpenAIClaimed:  mailbox.OpenAIClaimed,
-		GrokClaimed:    mailbox.GrokClaimed,
 		Status:         mailbox.Status,
 		Note:           mailbox.Note,
 		LastSyncAt:     formatTime(mailbox.LastSyncAt),

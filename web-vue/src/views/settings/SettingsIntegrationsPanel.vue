@@ -24,7 +24,7 @@
     </FormSection>
 
     <template v-else>
-      <FormSection title="接口接入" subtitle="GPT 与 Grok 共用 OpenAI 兼容接口和同一套 Bearer 鉴权。">
+      <FormSection title="接口接入" subtitle="GPT 使用 OpenAI 兼容接口与 Bearer 鉴权。">
         <div class="grid gap-3 md:grid-cols-2">
           <SurfaceBox
             v-for="item in accessItems"
@@ -69,7 +69,7 @@
         </FormField>
       </FormSection>
 
-      <FormSection title="当前模型" subtitle="模型来自统一目录，会按实际 GPT/Grok 账号能力自动更新。">
+      <FormSection title="当前模型" subtitle="模型来自统一 GPT 目录。">
         <div class="grid gap-3 md:grid-cols-3">
           <SurfaceBox v-for="item in modelItems" :key="item.label" density="compact">
             <p class="text-xs text-muted-foreground">{{ item.label }}</p>

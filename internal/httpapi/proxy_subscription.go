@@ -90,7 +90,7 @@ func (s *Server) fetchProxySubscription(r *http.Request, subscriptionURL string)
 		return nil, err
 	}
 	req.Header.Set("Accept", "text/plain, application/octet-stream;q=0.9, */*;q=0.8")
-	req.Header.Set("User-Agent", "gptgrok2api-go/1.2 proxy-subscription")
+	req.Header.Set("User-Agent", "gpt2api/proxy-subscription")
 	response, err := s.requestClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request proxy subscription: %w", err)

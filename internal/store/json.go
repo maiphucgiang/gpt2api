@@ -509,7 +509,7 @@ func (s *Store) loadAccountsLocked() error {
 	if err != nil {
 		return err
 	}
-	s.accountsCache = cloneAccountList(items)
+	s.accountsCache = normalizeAccountListJSON(items)
 	s.accountsIndex = accountIndex(s.accountsCache)
 	s.accountsLoaded = true
 	s.accountsRevision++
@@ -604,13 +604,38 @@ func normalizeAccountMapJSON(item map[string]any) map[string]any {
 	if json.Unmarshal(raw, &normalized) != nil {
 		return cloneMap(item)
 	}
+	if id := AccountID(normalized); id != "" {
+		normalized["id"] = id
+	}
 	return normalized
 }
 
 func normalizeAccountListJSON(items []map[string]any) []map[string]any {
 	normalized := make([]map[string]any, len(items))
+	reserved, seen := map[string]bool{}, map[string]bool{}
 	for i, item := range items {
 		normalized[i] = normalizeAccountMapJSON(item)
+		reserved[AccountID(normalized[i])] = true
+	}
+	for _, item := range normalized {
+		id := AccountID(item)
+		if id == "" {
+			continue
+		}
+		if seen[id] {
+			// Workspace IDs can be shared by distinct GPT credentials.
+			base := AccountID(map[string]any{"access_token": accountToken(item)})
+			if base == "" {
+				base = id
+			}
+			candidate := base
+			for suffix := 1; reserved[candidate] || seen[candidate]; suffix++ {
+				candidate = fmt.Sprintf("%s_%d", base, suffix)
+			}
+			id = candidate
+			item["id"] = id
+		}
+		seen[id] = true
 	}
 	return normalized
 }

@@ -4,7 +4,6 @@ import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
 import json from 'highlight.js/lib/languages/json'
 import markdown from 'highlight.js/lib/languages/markdown'
-import python from 'highlight.js/lib/languages/python'
 import shell from 'highlight.js/lib/languages/shell'
 import sql from 'highlight.js/lib/languages/sql'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -21,7 +20,6 @@ const languageAliases: Record<string, string> = {
   plaintext: 'text',
   powershell: 'shell',
   ps1: 'shell',
-  py: 'python',
   sh: 'shell',
   text: 'text',
   ts: 'typescript',
@@ -37,7 +35,6 @@ const languages: Record<string, LanguageFn> = {
   javascript,
   json,
   markdown,
-  python,
   shell,
   sql,
   typescript,

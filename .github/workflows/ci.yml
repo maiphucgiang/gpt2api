@@ -1,0 +1,39 @@
+name: Check
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: |
+            go.sum
+            go-image-gateway/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.5.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: web-vue/pnpm-lock.yaml
+      - run: pnpm --dir web-vue install --frozen-lockfile --ignore-scripts
+      - name: Tests
+        run: bash scripts/check.sh test
+      - name: CI build
+        run: bash scripts/check.sh build
+      - name: Static analysis
+        run: bash scripts/check.sh static

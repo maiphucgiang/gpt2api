@@ -135,7 +135,7 @@
           <GroupedSelectMenu
             v-model="chatModel"
             :groups="chatModelGroups"
-            placeholder="选择 GPT / Grok 模型"
+            placeholder="选择 GPT 模型"
             aria-label="对话模型"
             block
           />
@@ -190,7 +190,7 @@ const tabOptions = [
   { label: '对话', value: 'chat' },
 ]
 
-const searchPrompt = ref('帮我搜索 GPTGrok2API 相关资料')
+const searchPrompt = ref('帮我搜索 gpt2api 相关资料')
 const searchResult = ref<DebugSearchResult | null>(null)
 const searchError = ref('')
 const searchLoading = ref(false)
@@ -208,22 +208,16 @@ const chatModelGroups = computed(() => {
         .map(model => ({ label: model === 'auto' ? '自动模型' : model, value: model })),
     },
     {
-      label: 'Grok',
-      options: models
-        .filter(model => model.startsWith('grok-'))
-        .map(model => ({ label: model, value: model })),
-    },
-    {
       label: '其他',
       options: models
-        .filter(model => model !== 'auto' && !model.startsWith('gpt-') && !model.startsWith('grok-'))
+        .filter(model => model !== 'auto' && !model.startsWith('gpt-'))
         .map(model => ({ label: model, value: model })),
     },
   ]
   return groups.filter(group => group.options.length > 0)
 })
 const chatReasoningEffort = ref('')
-const chatInput = ref('你好，先记住我的项目叫 GPTGrok2API。')
+const chatInput = ref('你好，先记住我的项目叫 gpt2api。')
 const chatMessages = ref<DebugChatMessage[]>([])
 const chatRaw = ref<DebugChatCompletion | null>(null)
 const chatLoading = ref(false)
@@ -250,11 +244,11 @@ const apiBaseUrl = computed(() => {
 })
 const authKey = computed(() => getAuthToken())
 const skillZh = computed(() => `---
-name: gptgrok2api-search
-description: 当用户需要联网搜索、查询最新信息、核实事实或需要来源链接时，调用本地 GPTGrok2API 搜索接口。
+name: gpt2api-search
+description: 当用户需要联网搜索、查询最新信息、核实事实或需要来源链接时，调用本地 gpt2api 搜索接口。
 ---
 
-# GPTGrok2API 搜索
+# gpt2api 搜索
 
 当用户要求联网搜索、查询最新信息、核实资料、查新闻、查价格、查文档更新或需要来源链接时，使用这个 skill。
 
@@ -280,11 +274,11 @@ Body:
 - 如果接口报错，简要说明错误并询问是否重试。`)
 
 const skillEn = computed(() => `---
-name: gptgrok2api-search
-description: Use when current web search is needed through this GPTGrok2API server. Call the configured HTTP search endpoint with a prompt and return the answer with source URLs.
+name: gpt2api-search
+description: Use when current web search is needed through this gpt2api server. Call the configured HTTP search endpoint with a prompt and return the answer with source URLs.
 ---
 
-# GPTGrok2API Search
+# gpt2api Search
 
 Use this skill when the user asks for current web search, online lookup, recent information, or source-backed answers.
 
@@ -313,7 +307,7 @@ const skillInstallPromptZh = computed(() => `请帮我在本机安装一个用�
 
 要求：
 1. 按当前环境的 skill 安装规范，把它安装成本地 skill。
-2. skill 名称为：gptgrok2api-search
+2. skill 名称为：gpt2api-search
 3. 文件名为：SKILL.md
 4. 只创建或更新这个 skill 文件，不要修改其他无关文件。
 
@@ -327,7 +321,7 @@ const skillInstallPromptEn = computed(() => `Please install a local web-search s
 
 Requirements:
 1. Install this as a local skill according to the current environment's skill rules.
-2. Skill name: gptgrok2api-search
+2. Skill name: gpt2api-search
 3. File name: SKILL.md
 4. Only create or update this skill file.
 
@@ -341,7 +335,7 @@ const currentEditableKind = computed<DebugEditableKind>(() => activeTab.value ==
 
 watch(activeTab, (tab) => {
   if (tab === 'ppt') {
-    editablePrompt.value = '生成一个 GPTGrok2API 项目架构说明 PPT，包含后端链路、前端控制台、账号池、日志和图片链路。'
+    editablePrompt.value = '生成一个 gpt2api 项目架构说明 PPT，包含后端链路、前端控制台、账号池、日志和图片链路。'
     void refreshEditableTasks()
   } else if (tab === 'psd') {
     editablePrompt.value = '生成一个适合控制台产品展示的 PSD 版式，包含概览、账号、日志、图片和代理管理区块。'

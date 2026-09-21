@@ -1,14 +1,13 @@
+# Optional network attachment for an existing Sub2API deployment.
 services:
   app:
-    ports: !override
-      - "127.0.0.1:${CHATGPT2API_PORT:-8000}:80"
     networks:
       default:
       sub2api:
         aliases:
-          - gptgrok2api
+          - gpt2api
 
 networks:
   sub2api:
     external: true
-    name: deploy_sub2api-network
+    name: ${SUB2API_NETWORK:-deploy_sub2api-network}

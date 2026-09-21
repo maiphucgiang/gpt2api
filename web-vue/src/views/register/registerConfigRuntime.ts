@@ -127,7 +127,6 @@ export function useRegisterConfigRuntime(input: RegisterConfigRuntimeInput) {
     config.value.enabled = incoming.enabled
     config.value.stats = incoming.stats
     config.value.logs = incoming.logs
-    config.value.grok_oauth_logs = incoming.grok_oauth_logs
     config.value.checkout_logs = incoming.checkout_logs
     config.value.checkout_tasks = incoming.checkout_tasks
     config.value.checkout_retries_active = incoming.checkout_retries_active
@@ -145,7 +144,6 @@ export function useRegisterConfigRuntime(input: RegisterConfigRuntimeInput) {
     if (!config.value) return
     const target = normalizeRegisterTarget(value)
     config.value.target = target
-    if (target === 'grok') config.value.mode = 'total'
     config.value.mail.providers = providers.value.map(provider => providerForRegisterTarget(provider, target))
   }
 

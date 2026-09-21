@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/provider"
+	"github.com/maiphucgiang/gpt2api/internal/provider"
 )
 
 // Exercise the public routes against a ChatGPT-shaped upstream. In particular,
@@ -145,7 +145,7 @@ func TestGPTImage25Endpoints(t *testing.T) {
 			server.openAIImage = provider.NewOpenAIImage(upstream.URL, upstream.Client(), nil, 5*time.Second)
 			if _, _, _, err := server.store.AddAccounts(nil, []map[string]any{
 				{"access_token": "jwt.header.payload", "source_type": "chatgpt_web", "pool": "basic"},
-				{"token": "grok-cookie", "source_type": "grok", "pool": "super"},
+				{"access_token": "foreign-token", "credential_provider": "unsupported", "source_type": "external", "pool": "super"},
 			}); err != nil {
 				t.Fatal(err)
 			}

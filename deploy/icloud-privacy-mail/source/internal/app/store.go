@@ -516,35 +516,19 @@ func (s *FileStore) ClaimAvailableMailbox(project, note string) (Mailbox, error)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if strings.TrimSpace(project) != "" && normalizeMailboxClaimProject(project) == "" {
+		return Mailbox{}, errCode("invalid_project", "project 必须是 openai", false)
+	}
 	project = normalizeMailboxClaimProject(project)
 	for i, mailbox := range s.state.Mailboxes {
 		if !mailbox.APIActive || !mailbox.ICloudActive {
 			continue
 		}
-		switch project {
-		case "openai":
-			if mailbox.OpenAIClaimed || (mailbox.Status != StatusAvailable && !mailbox.GrokClaimed) {
-				continue
-			}
-			s.state.Mailboxes[i].OpenAIClaimed = true
-		case "grok":
-			if mailbox.GrokClaimed || (mailbox.Status != StatusAvailable && !mailbox.OpenAIClaimed) {
-				continue
-			}
-			s.state.Mailboxes[i].GrokClaimed = true
-		default:
-			if mailbox.Status != StatusAvailable || mailbox.OpenAIClaimed || mailbox.GrokClaimed {
-				continue
-			}
-			s.state.Mailboxes[i].Status = StatusUsed
+		if mailbox.OpenAIClaimed || mailbox.Status != StatusAvailable {
+			continue
 		}
-		if project == "openai" || project == "grok" {
-			if s.state.Mailboxes[i].OpenAIClaimed && s.state.Mailboxes[i].GrokClaimed {
-				s.state.Mailboxes[i].Status = StatusUsed
-			} else {
-				s.state.Mailboxes[i].Status = StatusAvailable
-			}
-		}
+		s.state.Mailboxes[i].OpenAIClaimed = project == "openai"
+		s.state.Mailboxes[i].Status = StatusUsed
 		if strings.TrimSpace(note) != "" {
 			s.state.Mailboxes[i].Note = mergeMailboxClaimNote(s.state.Mailboxes[i].Note, note)
 		}
@@ -558,8 +542,6 @@ func normalizeMailboxClaimProject(project string) string {
 	switch strings.ToLower(strings.TrimSpace(project)) {
 	case "openai", "chatgpt", "gpt":
 		return "openai"
-	case "grok", "xai", "x.ai":
-		return "grok"
 	default:
 		return ""
 	}
@@ -571,7 +553,7 @@ func (s *FileStore) SetMailboxClaimed(project string, emails []string, claimed b
 
 	project = normalizeMailboxClaimProject(project)
 	if project == "" {
-		return 0, nil, errCode("invalid_project", "project 必须是 openai 或 grok", false)
+		return 0, nil, errCode("invalid_project", "project 必须是 openai", false)
 	}
 	seen := make(map[string]struct{}, len(emails))
 	missing := make([]string, 0)
@@ -597,15 +579,9 @@ func (s *FileStore) SetMailboxClaimed(project string, emails []string, claimed b
 			continue
 		}
 		mailbox := &s.state.Mailboxes[index]
-		if project == "openai" {
-			mailbox.OpenAIClaimed = claimed
-		} else {
-			mailbox.GrokClaimed = claimed
-		}
-		if mailbox.OpenAIClaimed && mailbox.GrokClaimed {
+		mailbox.OpenAIClaimed = claimed
+		if claimed {
 			mailbox.Status = StatusUsed
-		} else if mailbox.OpenAIClaimed || mailbox.GrokClaimed {
-			mailbox.Status = StatusAvailable
 		} else if mailbox.Status == StatusUsed {
 			mailbox.Status = StatusAvailable
 		}
@@ -1444,20 +1420,15 @@ func (s *FileStore) migrateLegacyMailboxClaimsLocked() bool {
 	changed := false
 	for i := range s.state.Mailboxes {
 		mailbox := &s.state.Mailboxes[i]
-		if mailbox.Status != StatusUsed || mailbox.OpenAIClaimed || mailbox.GrokClaimed {
+		if mailbox.Status != StatusUsed || mailbox.OpenAIClaimed {
 			continue
 		}
 		note := strings.ToLower(strings.TrimSpace(mailbox.Note))
 		openAIClaimed := strings.Contains(note, "openai register") || strings.Contains(note, "chatgpt register")
-		grokClaimed := strings.Contains(note, "grok register") || strings.Contains(note, "xai register")
-		if !openAIClaimed && !grokClaimed {
+		if !openAIClaimed {
 			continue
 		}
 		mailbox.OpenAIClaimed = openAIClaimed
-		mailbox.GrokClaimed = grokClaimed
-		if mailbox.OpenAIClaimed != mailbox.GrokClaimed {
-			mailbox.Status = StatusAvailable
-		}
 		changed = true
 	}
 	return changed

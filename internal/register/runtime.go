@@ -58,7 +58,7 @@ func (r *Runtime) SetDrivers(mail MailProvider, captcha CaptchaSolver, registrar
 func (r *Runtime) Ready(target string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if !strings.EqualFold(strings.TrimSpace(target), "grok") && !strings.EqualFold(strings.TrimSpace(target), "openai") {
+	if !strings.EqualFold(strings.TrimSpace(target), "openai") {
 		return false
 	}
 	return r.Mail != nil && r.Captcha != nil && r.Registrar != nil
@@ -78,7 +78,7 @@ func (r *Runtime) Start(target string) error {
 }
 
 func (r *Runtime) ReadyLocked(target string) bool {
-	if !strings.EqualFold(strings.TrimSpace(target), "grok") && !strings.EqualFold(strings.TrimSpace(target), "openai") {
+	if !strings.EqualFold(strings.TrimSpace(target), "openai") {
 		return false
 	}
 	return r.Mail != nil && r.Captcha != nil && r.Registrar != nil

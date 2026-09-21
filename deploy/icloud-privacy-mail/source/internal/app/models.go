@@ -72,25 +72,25 @@ type Account struct {
 }
 
 type Mailbox struct {
-	ID                string    `json:"id"`
-	OwnerID           string    `json:"owner_id,omitempty"`
-	AccountID         string    `json:"account_id"`
-	Label             string    `json:"label"`
-	Email             string    `json:"email"`
-	APIToken          string    `json:"api_token"`
-	APIActive         bool      `json:"api_active"`
-	ICloudActive      bool      `json:"icloud_active"`
-	ReceiveCount      int       `json:"receive_count"`
-	OpenAIClaimed     bool      `json:"openai_claimed,omitempty"`
-	GrokClaimed       bool      `json:"grok_claimed,omitempty"`
-	Status            string    `json:"status"`
-	Note              string    `json:"note"`
-	LastSyncAt        time.Time `json:"last_sync_at,omitempty"`
-	LastSyncUID       string    `json:"last_sync_uid,omitempty"`
-	LastCodeMessageID string    `json:"last_code_message_id,omitempty"`
-	LastCodeAt        time.Time `json:"last_code_at,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                string          `json:"id"`
+	OwnerID           string          `json:"owner_id,omitempty"`
+	AccountID         string          `json:"account_id"`
+	Label             string          `json:"label"`
+	Email             string          `json:"email"`
+	APIToken          string          `json:"api_token"`
+	APIActive         bool            `json:"api_active"`
+	ICloudActive      bool            `json:"icloud_active"`
+	ReceiveCount      int             `json:"receive_count"`
+	OpenAIClaimed     bool            `json:"openai_claimed,omitempty"`
+	RetiredClaims     map[string]bool `json:"-"`
+	Status            string          `json:"status"`
+	Note              string          `json:"note"`
+	LastSyncAt        time.Time       `json:"last_sync_at,omitempty"`
+	LastSyncUID       string          `json:"last_sync_uid,omitempty"`
+	LastCodeMessageID string          `json:"last_code_message_id,omitempty"`
+	LastCodeAt        time.Time       `json:"last_code_at,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type Message struct {
@@ -196,7 +196,7 @@ func (m *Mailbox) UnmarshalJSON(data []byte) error {
 	if m.OwnerID == "" {
 		m.OwnerID = aux.LegacyOwnerID
 	}
-	return nil
+	return m.captureRetiredClaims(data)
 }
 
 func (m *Message) UnmarshalJSON(data []byte) error {
@@ -303,7 +303,6 @@ type publicMailbox struct {
 	ICloudActive       bool   `json:"icloud_active"`
 	ReceiveCount       int    `json:"receive_count"`
 	OpenAIClaimed      bool   `json:"openai_claimed"`
-	GrokClaimed        bool   `json:"grok_claimed"`
 	Status             string `json:"status"`
 	Note               string `json:"note"`
 	LastSyncAt         string `json:"last_sync_at,omitempty"`

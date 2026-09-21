@@ -179,19 +179,6 @@ export const IMAGE_SIZE_PRESETS: ImageSizePreset[] = [
   ...HIGH_RES_IMAGE_SIZE_PRESETS,
 ]
 
-export const GROK_IMAGE_SIZE_PRESETS: ImageSizePreset[] = [
-  { label: '自动', value: 'auto', ratio: 'auto', resolution: 'auto' },
-  createSizePreset('1024x1024', '1:1', '1K'),
-  createSizePreset('1024x1792', '2:3', '1K'),
-  createSizePreset('1792x1024', '3:2', '1K'),
-  createSizePreset('720x1280', '9:16', '1K'),
-  createSizePreset('1280x720', '16:9', '1K'),
-]
-
-const AUTO_IMAGE_SIZE_PRESET: ImageSizePreset[] = [
-  { label: '自动', value: 'auto', ratio: 'auto', resolution: 'auto' },
-]
-
 export const STANDARD_IMAGE_SIZE_OPTIONS: ImageSizeOption[] = STANDARD_IMAGE_SIZE_PRESETS
 export const HIGH_RES_IMAGE_SIZE_OPTIONS: ImageSizeOption[] = HIGH_RES_IMAGE_SIZE_PRESETS
 export const IMAGE_SIZE_OPTIONS: ImageSizeOption[] = IMAGE_SIZE_PRESETS
@@ -202,10 +189,6 @@ export function supportsHighResolutionImageSizes(model: string) {
 }
 
 export function resolveImageSizePresets(model: string): ImageSizePreset[] {
-  const value = String(model || '').toLowerCase()
-  if (value === 'grok-imagine-image-lite') return AUTO_IMAGE_SIZE_PRESET
-  if (value === 'grok-imagine-image-edit') return GROK_IMAGE_SIZE_PRESETS.slice(0, 2)
-  if (value.startsWith('grok-imagine-image')) return GROK_IMAGE_SIZE_PRESETS
   return supportsHighResolutionImageSizes(model)
     ? IMAGE_SIZE_PRESETS
     : STANDARD_IMAGE_SIZE_PRESETS

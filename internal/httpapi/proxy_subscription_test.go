@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 func TestParseProxySubscriptionPlainTextAndBase64(t *testing.T) {

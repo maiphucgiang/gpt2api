@@ -508,10 +508,9 @@ export function useDashboardPage() {
     stats.value[5].value = formatStatNumber(totalQuota)
     const providers = overview.account_providers || {}
     const gpt = providers.gpt || {}
-    const grok = providers.grok || {}
-    stats.value[0].meta = `GPT ${formatStatNumber(gpt.total)} · Grok ${formatStatNumber(grok.total)}`
-    stats.value[1].meta = `GPT ${formatStatNumber(gpt.active)} · Grok ${formatStatNumber(grok.active)}`
-    stats.value[5].meta = `GPT ${formatStatNumber(gpt.total_quota)} · Grok ${formatStatNumber(grok.total_quota)}`
+    stats.value[0].meta = `GPT ${formatStatNumber(gpt.total)}`
+    stats.value[1].meta = `GPT ${formatStatNumber(gpt.active)}`
+    stats.value[5].meta = `GPT ${formatStatNumber(gpt.total_quota)}`
   }
 
   function getTrendPayload(overview: OverviewPayload) {

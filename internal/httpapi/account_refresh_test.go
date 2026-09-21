@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/config"
+	"github.com/maiphucgiang/gpt2api/internal/config"
 )
 
 func TestAccountRefreshHTTPFlowPersistsRemoteFieldsAndRedactsSecrets(t *testing.T) {
@@ -228,7 +228,7 @@ func TestAccountRefreshTransientErrorKeepsAccountNormal(t *testing.T) {
 
 	server := newAccountRefreshTestServer(t, upstream.URL)
 	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{
-		"access_token": "access-transient", "email": "transient@example.test", "status": "正常", "quota": 7,
+		"access_token": "access-transient", "source_type": "chatgpt_web", "email": "transient@example.test", "status": "正常", "quota": 7,
 	}})
 	if err != nil {
 		t.Fatal(err)

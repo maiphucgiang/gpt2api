@@ -75,8 +75,7 @@ func (s *Server) runBackup(w http.ResponseWriter) {
 		{s.cfg.AccountsPath, "data/accounts.json"},
 		{s.cfg.AuthKeysPath, "data/auth_keys.json"},
 		{s.cfg.ConfigPath, "config.json"},
-		{s.cfg.OAuthPath, "data/oauth_accounts.json.enc"},
-		{s.cfg.QueuePath, "data/tasks.json"},
+		{s.cfg.RegisterPath, "data/register.json"},
 		{s.tagsPath(), "data/image_tags.json"},
 	}
 	for _, item := range files {

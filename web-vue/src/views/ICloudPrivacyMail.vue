@@ -169,7 +169,6 @@
                 </div>
                 <div class="flex flex-wrap items-center justify-end gap-1.5">
                   <MetaChip v-if="mailbox.openai_claimed" size="xs" tone="success">GPT 已注册</MetaChip>
-                  <MetaChip v-if="mailbox.grok_claimed" size="xs" tone="info">Grok 已注册</MetaChip>
                   <MetaChip size="xs" :tone="mailboxAvailabilityTone(mailbox)">{{ mailboxAvailabilityLabel(mailbox) }}</MetaChip>
                 </div>
               </div>
@@ -271,24 +270,19 @@ const metrics = computed(() => [
 ])
 
 function mailboxCanClaimAny(mailbox: ICloudMailbox) {
-  return Boolean(mailbox.api_active && mailbox.icloud_active && mailbox.status === 'available' && !(mailbox.openai_claimed && mailbox.grok_claimed))
+  return Boolean(mailbox.api_active && mailbox.icloud_active && mailbox.status === 'available' && !mailbox.openai_claimed)
 }
 
 function mailboxAvailabilityLabel(mailbox: ICloudMailbox) {
   if (!mailbox.api_active || !mailbox.icloud_active) return '不可用'
-  if (mailbox.openai_claimed && mailbox.grok_claimed) return '两平台均已使用'
-  if (mailbox.openai_claimed) return '仅 Grok 可用'
-  if (mailbox.grok_claimed) return '仅 GPT 可用'
-  if (mailbox.status && mailbox.status !== 'available') return '已使用'
-  return 'GPT / Grok 均可用'
+  if (mailbox.openai_claimed || (mailbox.status && mailbox.status !== 'available')) return '已使用'
+  return 'GPT 可用'
 }
 
 function mailboxAvailabilityTone(mailbox: ICloudMailbox): 'success' | 'info' | 'warning' | 'danger' | 'muted' {
   if (!mailbox.api_active || !mailbox.icloud_active) return 'danger'
-  if ((mailbox.openai_claimed && mailbox.grok_claimed) || (mailbox.status && mailbox.status !== 'available')) return 'warning'
-  if (mailbox.openai_claimed) return 'info'
-  if (mailbox.grok_claimed) return 'success'
-  return 'muted'
+  if (mailbox.openai_claimed || (mailbox.status && mailbox.status !== 'available')) return 'warning'
+  return 'success'
 }
 
 function errorText(error: unknown) {

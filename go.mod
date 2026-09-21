@@ -1,4 +1,4 @@
-module github.com/auucoder/gptgrok2api-go
+module github.com/maiphucgiang/gpt2api
 
 go 1.23
 

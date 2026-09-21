@@ -95,16 +95,13 @@
             :target="registerTarget"
             :enabled="registerConfig.enabled"
             :saving="legacySaving"
-            :export-busy="grokExportBusy"
             :action-disabled="registerActionDisabled"
             :runtime-hint="registerRuntimeHint"
             :metric-items="registerMetricItems"
             :runtime-log-lines="runtimeLogLines"
-            :grok-oauth-log-lines="grokOAuthRuntimeLogLines"
             :checkout-log-lines="checkoutRuntimeLogLines"
             @toggle-task="toggleLegacyTask"
             @reset-stats="resetLegacyStats"
-            @export-grok="exportGrokAccounts"
           >
             <FormSection
               v-if="hasCheckoutRuntime"
@@ -165,7 +162,6 @@ import StateBadge from '@/components/ai/StateBadge.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { usePageRuntime } from '@/composables/usePageRuntime'
 import { useToast } from '@/composables/useToast'
-import { saveBlob } from '@/lib/downloads'
 import RegisterProviderCard from '@/views/register/RegisterProviderCard.vue'
 import CheckoutTaskTable from '@/views/register/CheckoutTaskTable.vue'
 import RegisterRuntimePanel from '@/views/register/RegisterRuntimePanel.vue'
@@ -174,7 +170,6 @@ import {
   defaultRegisterConfig,
   enabledRegisterProviderCount as buildEnabledRegisterProviderCount,
   formatClock,
-  grokRequirementMessages,
   normalizeRegisterTarget,
   providerForRegisterTarget,
   registerActionDisabled as buildRegisterActionDisabled,
@@ -197,7 +192,6 @@ const confirmDialog = useConfirmDialog()
 const route = useRoute()
 const router = useRouter()
 const pageRuntime = usePageRuntime('register')
-const grokExportBusy = ref(false)
 const checkoutRetryStopping = ref(false)
 const checkoutHistoryClearing = ref(false)
 
@@ -291,7 +285,6 @@ const visibleRegisterProviderEntries = computed(() => registerProviders.value
   .map((provider, index) => ({ provider, index }))
   .filter(({ provider }) => showDisabledProviders.value || provider.enable !== false))
 const enabledProviderIssueCount = computed(() => buildRegisterProviderIssueCount(registerProviders.value))
-const grokConfigIssueCount = computed(() => grokRequirementMessages(registerConfig.value).length)
 const sub2apiSyncIssueCount = computed(() => sub2apiSyncRequirementMessages(registerConfig.value).length)
 const autosaveLabel = computed(() => {
   if (autosaveStatus.value === 'saving') return '自动保存中...'
@@ -305,7 +298,7 @@ const autosaveTone = computed(() => {
   return 'success'
 })
 const registerIssueCount = computed(() => (
-  enabledProviderIssueCount.value + grokConfigIssueCount.value + sub2apiSyncIssueCount.value
+  enabledProviderIssueCount.value + sub2apiSyncIssueCount.value
 ))
 const registerTarget = computed(() => normalizeRegisterTarget(registerConfig.value?.target))
 const registerActionDisabled = computed(() => buildRegisterActionDisabled(
@@ -316,7 +309,6 @@ const registerActionDisabled = computed(() => buildRegisterActionDisabled(
 ))
 const legacyStats = computed(() => ({ ...defaultRegisterConfig.stats, ...(registerConfig.value?.stats || {}) }))
 const legacyLogs = computed(() => (registerConfig.value?.logs || []).slice(-120))
-const grokOAuthLogs = computed(() => (registerConfig.value?.grok_oauth_logs || []).slice(-120))
 const checkoutLogs = computed(() => (registerConfig.value?.checkout_logs || []).slice(-120))
 const checkoutTasks = computed(() => Array.isArray(registerConfig.value?.checkout_tasks)
   ? [...registerConfig.value.checkout_tasks]
@@ -343,7 +335,6 @@ const registerMetricItems = computed(() => buildRegisterMetricItems(
 ))
 
 const runtimeLogLines = computed(() => buildRegisterRuntimeLogLines(legacyLogs.value, formatClock))
-const grokOAuthRuntimeLogLines = computed(() => buildRegisterRuntimeLogLines(grokOAuthLogs.value, formatClock))
 const checkoutRuntimeLogLines = computed(() => buildRegisterRuntimeLogLines(checkoutLogs.value, formatClock))
 const providerRuntime = useRegisterProviderRuntime({
   config: registerConfig,
@@ -370,35 +361,6 @@ function updateProviderType(index: number, type: string) {
 function updateProviderField(index: number, key: string, value: unknown) {
   updateProviderFieldDraft(index, key, value)
   if (key === 'enable' && value === false) showDisabledProviders.value = true
-}
-
-function grokExportFilename(format: 'cpa' | 'sub2api') {
-  const stamp = new Date().toISOString().slice(0, 19).replaceAll(':', '-')
-  return format === 'cpa'
-    ? `grok-accounts-cpa-${stamp}.zip`
-    : `grok-accounts-sub2api-${stamp}.json`
-}
-
-async function exportGrokAccounts(format: 'cpa' | 'sub2api') {
-  const formatLabel = format === 'cpa' ? 'CPA ZIP' : 'Sub2API JSON'
-  const confirmed = await confirmDialog.ask({
-    title: `导出 ${formatLabel}`,
-    message: `将导出已完成 OAuth 授权的 Grok 账号，文件包含完整认证信息，请在可信环境中保存。`,
-    confirmText: '导出',
-  })
-  if (!confirmed) return
-
-  grokExportBusy.value = true
-  try {
-    const blob = await registerApi.exportGrokAccounts(format)
-    if (!blob.size) throw new Error('导出文件为空')
-    saveBlob(blob, grokExportFilename(format))
-    toast.success(`${formatLabel} 已导出`)
-  } catch (error: any) {
-    toast.error(error?.message || '导出 Grok 账号失败')
-  } finally {
-    grokExportBusy.value = false
-  }
 }
 
 async function stopCheckoutRetries() {

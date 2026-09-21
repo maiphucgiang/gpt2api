@@ -29,16 +29,6 @@ type Config struct {
 	OpenAIPlatformBaseURL  string
 	OpenAILoginTokenURL    string
 	OpenAIAgentRegisterURL string
-	GrokChatURL            string
-	GrokRateLimitsURL      string
-	XAICLIBaseURL          string
-	XAICLITokenURL         string
-	ConsoleURL             string
-	MediaChatURL           string
-	MediaPostURL           string
-	AssetUploadURL         string
-	AssetsBaseURL          string
-	ImagineWSURL           string
 	ProxyURL               string
 	ProxyPool              []string
 	FallbackProxy          string
@@ -49,18 +39,9 @@ type Config struct {
 	FlareSolverrURL        string
 	ClearanceEnabled       bool
 	ClearanceTimeout       time.Duration
-	QueueBackend           string
-	RedisAddr              string
-	RedisPassword          string
-	RedisDB                int
-	OAuthDeviceURL         string
-	OAuthTokenURL          string
 	ImageDataDir           string
 	VideoDataDir           string
-	OAuthPath              string
-	QueuePath              string
 	RegisterPath           string
-	GrokAccountsPath       string
 	RegisterMailURL        string
 	RegisterCaptchaURL     string
 	RegisterDriverURL      string
@@ -99,7 +80,7 @@ type ProxyNode struct {
 
 func Load(root string) (Config, error) {
 	if strings.TrimSpace(root) == "" {
-		root = strings.TrimSpace(os.Getenv("GROK_ROOT_DIR"))
+		root = strings.TrimSpace(os.Getenv("GPT2API_ROOT_DIR"))
 	}
 	if strings.TrimSpace(root) == "" {
 		root, _ = os.Getwd()
@@ -149,17 +130,18 @@ func Load(root string) (Config, error) {
 		imageCleanupIntervalSeconds = 60
 	}
 
+	dataDir := resolvePath(root, env("GPT2API_DATA_DIR", "data"))
 	cfg := Config{
 		RootDir:                root,
-		ListenAddr:             env("GO_LISTEN_ADDR", env("CHATGPT2API_LISTEN_ADDR", ":8080")),
-		DataDir:                resolvePath(root, env("GROK_DATA_DIR", "data")),
+		ListenAddr:             env("GPT2API_LISTEN_ADDR", env("GO_LISTEN_ADDR", env("CHATGPT2API_LISTEN_ADDR", ":8080"))),
+		DataDir:                dataDir,
 		StaticDir:              resolvePath(root, env("GO_STATIC_DIR", "web_dist")),
-		ConfigPath:             resolvePath(root, env("GO_CONFIG_PATH", "config.json")),
-		AccountsPath:           resolvePath(root, env("GO_ACCOUNTS_PATH", "data/accounts.json")),
-		AuthKeysPath:           resolvePath(root, env("GO_AUTH_KEYS_PATH", "data/auth_keys.json")),
-		APIKey:                 strings.TrimSpace(os.Getenv("CHATGPT2API_AUTH_KEY")),
-		AdminKey:               strings.TrimSpace(os.Getenv("CHATGPT2API_ADMIN_KEY")),
-		WebUIKey:               strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY")),
+		ConfigPath:             resolvePath(root, env("GO_CONFIG_PATH", filepath.Join(dataDir, "config.json"))),
+		AccountsPath:           resolvePath(root, env("GO_ACCOUNTS_PATH", filepath.Join(dataDir, "accounts.json"))),
+		AuthKeysPath:           resolvePath(root, env("GO_AUTH_KEYS_PATH", filepath.Join(dataDir, "auth_keys.json"))),
+		APIKey:                 env("GPT2API_AUTH_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_AUTH_KEY"))),
+		AdminKey:               env("GPT2API_ADMIN_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_ADMIN_KEY"))),
+		WebUIKey:               env("GPT2API_WEBUI_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY"))),
 		UpstreamURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("GO_UPSTREAM_URL")), "/"),
 		UpstreamAPIKey:         strings.TrimSpace(os.Getenv("GO_UPSTREAM_API_KEY")),
 		OpenAIBaseURL:          strings.TrimRight(env("GO_OPENAI_BASE_URL", "https://chatgpt.com"), "/"),
@@ -168,16 +150,6 @@ func Load(root string) (Config, error) {
 		OpenAIPlatformBaseURL:  strings.TrimRight(env("GO_OPENAI_PLATFORM_BASE_URL", "https://platform.openai.com"), "/"),
 		OpenAILoginTokenURL:    env("GO_OPENAI_LOGIN_TOKEN_URL", "https://auth.openai.com/api/accounts/oauth/token"),
 		OpenAIAgentRegisterURL: env("GO_OPENAI_AGENT_REGISTER_URL", "https://auth.openai.com/api/accounts/v1/agent/register"),
-		GrokChatURL:            env("GO_GROK_CHAT_URL", "https://grok.com/rest/app-chat/conversations/new"),
-		GrokRateLimitsURL:      env("GO_GROK_RATE_LIMITS_URL", "https://grok.com/rest/rate-limits"),
-		XAICLIBaseURL:          strings.TrimRight(env("GO_XAI_CLI_BASE_URL", "https://cli-chat-proxy.grok.com/v1"), "/"),
-		XAICLITokenURL:         env("GO_XAI_CLI_TOKEN_URL", "https://auth.x.ai/oauth2/token"),
-		ConsoleURL:             env("GO_CONSOLE_RESPONSES_URL", "https://console.x.ai/v1/responses"),
-		MediaChatURL:           env("GO_MEDIA_CHAT_URL", "https://grok.com/rest/app-chat/conversations/new"),
-		MediaPostURL:           env("GO_MEDIA_POST_URL", "https://grok.com/rest/media/post/create"),
-		AssetUploadURL:         env("GO_ASSET_UPLOAD_URL", "https://grok.com/rest/app-chat/upload-file"),
-		AssetsBaseURL:          env("GO_ASSETS_BASE_URL", "https://assets.grok.com"),
-		ImagineWSURL:           env("GO_IMAGINE_WS_URL", "wss://grok.com/ws/imagine/listen"),
 		ProxyURL:               strings.TrimSpace(os.Getenv("GO_PROXY_URL")),
 		ProxyPool:              splitList(os.Getenv("GO_PROXY_POOL")),
 		ResourceProxyURL:       strings.TrimSpace(os.Getenv("GO_RESOURCE_PROXY_URL")),
@@ -186,18 +158,9 @@ func Load(root string) (Config, error) {
 		FlareSolverrURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("GO_FLARESOLVERR_URL")), "/"),
 		ClearanceEnabled:       envBool("GO_CLEARANCE_ENABLED", false),
 		ClearanceTimeout:       time.Duration(envInt("GO_CLEARANCE_TIMEOUT_SECONDS", 60)) * time.Second,
-		QueueBackend:           strings.ToLower(env("GO_QUEUE_BACKEND", "json")),
-		RedisAddr:              env("GO_REDIS_ADDR", "127.0.0.1:6379"),
-		RedisPassword:          strings.TrimSpace(os.Getenv("GO_REDIS_PASSWORD")),
-		RedisDB:                envIntAllowZero("GO_REDIS_DB", 0),
-		OAuthDeviceURL:         env("GO_XAI_OAUTH_DEVICE_URL", "https://auth.x.ai/oauth2/device/code"),
-		OAuthTokenURL:          env("GO_XAI_OAUTH_TOKEN_URL", "https://auth.x.ai/oauth2/token"),
-		ImageDataDir:           resolvePath(root, env("GO_IMAGE_DATA_DIR", filepath.Join("data", "files", "images"))),
-		VideoDataDir:           resolvePath(root, env("GO_VIDEO_DATA_DIR", filepath.Join("data", "files", "videos"))),
-		OAuthPath:              resolvePath(root, env("GO_OAUTH_PATH", filepath.Join("data", "oauth_accounts.json.enc"))),
-		QueuePath:              resolvePath(root, env("GO_QUEUE_PATH", filepath.Join("data", "tasks.json"))),
-		RegisterPath:           resolvePath(root, env("GO_REGISTER_PATH", filepath.Join("data", "register.json"))),
-		GrokAccountsPath:       resolvePath(root, env("GO_GROK_ACCOUNTS_PATH", filepath.Join("data", "grok_accounts.json"))),
+		ImageDataDir:           resolvePath(root, env("GO_IMAGE_DATA_DIR", filepath.Join(dataDir, "files", "images"))),
+		VideoDataDir:           resolvePath(root, env("GO_VIDEO_DATA_DIR", filepath.Join(dataDir, "files", "videos"))),
+		RegisterPath:           resolvePath(root, env("GO_REGISTER_PATH", filepath.Join(dataDir, "register.json"))),
 		RegisterMailURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_MAIL_URL")), "/"),
 		RegisterCaptchaURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_CAPTCHA_URL")), "/"),
 		RegisterDriverURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_URL")), "/"),

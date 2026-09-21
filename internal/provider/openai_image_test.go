@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

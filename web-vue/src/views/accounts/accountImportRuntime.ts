@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 import { accountsApi } from '@/api/accounts'
 import { accountImportsApi } from '@/api/accountImports'
+import { readCPAFiles } from '@/lib/cpaImport'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
 import type { useAccountBulkProgressRuntime } from './accountBulkProgressRuntime'
@@ -56,36 +57,6 @@ function parseSessionJsonAccount(rawText: string): AccountImportPayload {
   }
 }
 
-function tokenFromCPAAccount(value: unknown): string {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
-  const source = value as Record<string, unknown>
-  return String(source.access_token || source.accessToken || '').trim()
-}
-
-function parseCPAJsonTokens(rawText: string, label: string) {
-  const text = rawText.trim()
-  if (!text) throw new Error(`${label} 是空文件`)
-  const parsed = JSON.parse(text)
-  const candidates: unknown[] = []
-
-  if (Array.isArray(parsed)) {
-    candidates.push(...parsed)
-  } else if (parsed && typeof parsed === 'object') {
-    if (tokenFromCPAAccount(parsed)) {
-      candidates.push(parsed)
-    } else {
-      const source = parsed as Record<string, unknown>
-      for (const key of ['accounts', 'items', 'data', 'results']) {
-        const rows = source[key]
-        if (Array.isArray(rows)) candidates.push(...rows)
-      }
-    }
-  }
-
-  const tokens = uniqueTokens(candidates.map(tokenFromCPAAccount).filter(Boolean))
-  if (!tokens.length) throw new Error(`${label} 中没有找到 access_token`)
-  return tokens
-}
 
 export function useAccountImportRuntime(options: AccountImportRuntimeOptions) {
   const importBusy = ref(false)
@@ -360,13 +331,27 @@ export function useAccountImportRuntime(options: AccountImportRuntimeOptions) {
     if (!fileList.length) return
     importBusy.value = true
     try {
-      const tokens: string[] = []
-      for (const file of fileList) {
-        const text = await file.text()
-        tokens.push(...parseCPAJsonTokens(text, file.name))
+      const { accounts: payloads, invalidFiles } = await readCPAFiles(fileList)
+      if (!payloads.length) throw new Error(`没有可导入的记录，无效文件 ${invalidFiles}`)
+      const confirmed = await confirmDialog.ask({
+        title: '导入 CPA 凭证',
+        message: `检查 ${payloads.length} 条记录，仅导入 Codex OAuth；类型不支持的记录及 ${invalidFiles} 个无效文件会跳过。`,
+        confirmText: '确认导入',
+        cancelText: '取消',
+      })
+      if (!confirmed) return
+      let added = 0, skipped = 0, unsupported = 0, failed = 0
+      for (let index = 0; index < payloads.length; index += IMPORT_BATCH_SIZE) {
+        const result = await accountImportsApi.importCPAAccounts(payloads.slice(index, index + IMPORT_BATCH_SIZE))
+        added += result.added
+        skipped += result.skipped
+        unsupported += result.unsupported
+        failed += result.failed
       }
-      importBusy.value = false
-      await importTokenBatch(tokens, 'cpa_json', '导入 CPA JSON 文件')
+      await options.loadData({ silentErrorToast: true })
+      const message = `CPA 导入完成：新增 ${added}，重复 ${skipped}，类型不支持 ${unsupported}，失败 ${failed}，无效文件 ${invalidFiles}`
+      if (failed || unsupported || invalidFiles) toast.warning(message)
+      else toast.success(message)
     } catch (error) {
       options.setError('导入 CPA JSON 文件失败', error)
     } finally {

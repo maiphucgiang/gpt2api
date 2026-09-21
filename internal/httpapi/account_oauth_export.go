@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
 )
 
 func (s *Server) accountOAuthStart(w http.ResponseWriter, r *http.Request) {
@@ -69,19 +71,7 @@ func (s *Server) accountOAuthFinish(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) refreshImportedOAuth(ctx context.Context, token string) (map[string]any, error) {
-	account, err := s.accountByRef(token)
-	if err != nil {
-		return nil, err
-	}
-	result, err := s.openAIAccountClient().RefreshAccount(ctx, account)
-	if err != nil {
-		return nil, err
-	}
-	updated, _, err := s.store.RotateAccountTokens(token, result.AccessToken, result.RefreshToken, result.IDToken, result.Fields)
-	if err != nil {
-		return nil, err
-	}
-	return updated, nil
+	return s.refreshAccountSnapshot(ctx, token)
 }
 
 func (s *Server) accountExport(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +161,9 @@ func (s *Server) exportAccounts(tokens []string) ([]map[string]string, error) {
 }
 
 func buildAccountExportItem(account map[string]any) (map[string]string, bool) {
+	if !isOpenAIAccount(accounts.Account{Token: accountToken(account), Fields: account}) {
+		return nil, false
+	}
 	access, refresh, id := stringValue(account["access_token"]), stringValue(account["refresh_token"]), stringValue(account["id_token"])
 	if access == "" || refresh == "" || id == "" {
 		return nil, false
@@ -181,7 +174,7 @@ func buildAccountExportItem(account map[string]any) (map[string]string, bool) {
 	profile := mapValue(claims["https://api.openai.com/profile"])
 	email := firstNonEmpty(stringValue(account["email"]), stringValue(profile["email"]), stringValue(idClaims["email"]))
 	accountID := firstNonEmpty(stringValue(account["account_id"]), stringValue(auth["chatgpt_account_id"]), stringValue(account["user_id"]))
-	item := map[string]string{"type": firstNonEmpty(stringValue(account["export_type"]), "codex"), "email": email, "account_id": accountID, "access_token": access, "refresh_token": refresh, "id_token": id, "expired": jwtTime(claims["exp"]), "last_refresh": jwtTime(claims["iat"])}
+	item := map[string]string{"type": "codex", "email": email, "account_id": accountID, "access_token": access, "refresh_token": refresh, "id_token": id, "expired": jwtTime(claims["exp"]), "last_refresh": jwtTime(claims["iat"])}
 	if password := stringValue(account["password"]); password != "" {
 		item["password"] = password
 	}

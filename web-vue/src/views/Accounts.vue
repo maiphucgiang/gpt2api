@@ -1,16 +1,6 @@
 <template>
   <div class="relative space-y-8">
-    <div class="flex items-center justify-between gap-3">
-      <ConsoleSegmentedTabs
-        :model-value="activeAccountPlatform"
-        :options="accountPlatformOptions"
-        fit="content"
-        aria-label="账号平台"
-        @update:model-value="setActiveAccountPlatform(String($event))"
-      />
-    </div>
-
-    <PagePanel v-if="activeAccountPlatform === 'gpt'" class="space-y-5">
+    <PagePanel class="space-y-5">
       <div class="accounts-toolbar">
         <div class="accounts-toolbar-row accounts-toolbar-row-main">
           <FilterToolbar class="accounts-toolbar-filters" :bordered="false">
@@ -203,227 +193,7 @@
       />
     </PagePanel>
 
-    <PagePanel v-else class="space-y-5">
-      <MetricStrip
-        :items="grokMetricItems"
-        columns-class="grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
-        density="compact"
-      />
-      <SurfaceBox
-        v-if="grokRuntimeError"
-        tone="muted"
-        density="compact"
-        wrap
-      >
-        Grok 运行时数据暂不可用：{{ grokRuntimeError }}
-      </SurfaceBox>
-
-      <div class="accounts-toolbar">
-        <div class="accounts-toolbar-row accounts-toolbar-row-main">
-          <FilterToolbar class="accounts-toolbar-filters" :bordered="false">
-            <Input
-              :model-value="grokKeyword"
-              type="text"
-              placeholder="搜索 Grok 账号 ID / 邮箱 / 来源 / 状态"
-              block
-              root-class="min-w-[14rem] flex-1 md:max-w-sm"
-              @update:model-value="grokKeyword = $event.trim()"
-            />
-            <GroupedSelectMenu
-              v-model="grokStatusFilter"
-              :options="grokStatusFilterOptions"
-              placeholder="状态筛选"
-              selected-indicator="none"
-              aria-label="Grok 账号状态筛选"
-            />
-          </FilterToolbar>
-
-          <div class="accounts-toolbar-summary">
-            <AccountSelectionSummary
-              :all-selected="grokAllVisibleSelected"
-              :total-count="grokAccountListTotal"
-              :selected-count="grokSelectedCount"
-              :view-mode="grokViewMode"
-              @toggle-all="toggleSelectAllVisibleGrokAccounts"
-              @update:view-mode="setGrokViewMode"
-            />
-          </div>
-        </div>
-
-        <div class="accounts-toolbar-row accounts-toolbar-row-actions">
-          <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-ops" :bordered="false" gap="tight">
-            <Button
-              size="sm"
-              variant="outline"
-              :root-class="accountToolbarSecondaryClass"
-              :disabled="Boolean(grokOAuthRowAction.accountId)"
-              @click="showGrokOAuthAccess = true"
-            >
-              OAuth 接入 ({{ grokOAuthTotal }})
-            </Button>
-            <FloatingActionMenu
-              label="导出"
-              :items="grokExportMenuItems"
-              :disabled="grokExportBusy || grokAccountAllTotal === 0"
-              align="left"
-              :trigger-class="accountToolbarMenuClass"
-              @select="handleGrokExportAction"
-            />
-          </FilterToolbar>
-
-          <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-refresh" :bordered="false" gap="tight">
-            <Button
-              size="sm"
-              :variant="grokProbePollingEnabled ? 'outline' : 'primary'"
-              :root-class="accountToolbarButtonClass"
-              :disabled="grokProbePollingBusy"
-              :title="grokProbePollingEnabled ? '关闭 Grok 定时轮询' : '开启 Grok 定时轮询'"
-              @click="toggleGrokProbePolling"
-            >
-              <Icon
-                :icon="grokProbePollingBusy ? 'lucide:loader-circle' : grokProbePollingEnabled ? 'lucide:circle-pause' : 'lucide:circle-play'"
-                class="h-3.5 w-3.5"
-                :class="{ 'animate-spin': grokProbePollingBusy }"
-              />
-              {{ grokProbePollingBusy ? '更新中...' : grokProbePollingEnabled ? '关闭轮询' : '开启轮询' }}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :root-class="accountToolbarSecondaryClass"
-              :disabled="grokLoading"
-              @click="loadGrokAccounts"
-            >
-              刷新列表
-            </Button>
-          </FilterToolbar>
-        </div>
-      </div>
-
-      <PageLoadingState
-        v-if="grokLoading && grokAccounts.length === 0"
-        title="正在加载 Grok 账号"
-        description="读取注册账号、登录态和分页状态。"
-      />
-
-      <TableShell v-else-if="grokViewMode === 'list'">
-        <table class="min-w-[1700px] w-full table-fixed text-left text-sm">
-          <thead class="text-xs font-medium text-muted-foreground">
-            <tr>
-              <th class="w-12 py-3 pr-4">
-                <Checkbox
-                  :model-value="grokAllVisibleSelected"
-                  @update:model-value="toggleSelectAllVisibleGrokAccounts"
-                />
-              </th>
-              <th class="w-[12rem] py-3 pr-5">账号 / TOKEN</th>
-              <th class="w-[5.5rem] py-3 pr-5">账号类型</th>
-              <th class="w-[5.5rem] py-3 pr-5">注册状态</th>
-              <th class="w-[8rem] py-3 pr-5">SSO 状态</th>
-              <th class="w-[11rem] py-3 pr-5">SSO 额度 A / F / E / H / C</th>
-              <th class="w-[8.5rem] py-3 pr-5">OAuth 状态</th>
-              <th class="w-[13rem] py-3 pr-5">OAuth 剩余 / 重置</th>
-              <th class="w-[7rem] py-3 pr-5">恢复时间</th>
-              <th class="w-[9rem] py-3 pr-5">成功 / 失败</th>
-              <th class="w-[8rem] py-3 pr-5">最近使用</th>
-              <th class="w-[16rem] py-3 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="text-sm text-foreground">
-            <tr v-if="!grokLoading && grokAccounts.length === 0">
-              <td colspan="12" class="py-6">
-                <EmptyState
-                  plain
-                  title="暂无 Grok 账号"
-                  description="Grok 纯协议注册成功后，账号会自动进入这里。"
-                />
-              </td>
-            </tr>
-            <GrokAccountTableRow
-              v-for="item in grokAccounts"
-              :key="item.id"
-              :item="item"
-              :selected="isGrokAccountSelected(item.id)"
-              :runtime-available="grokRuntimeAvailable"
-              :busy="grokBatchBusy"
-              :syncing="grokSyncingAccountId === item.id"
-              :refreshing="grokRefreshingAccountId === item.id"
-              :testing="grokTestingAccountId === item.id"
-              :chatting="grokChattingAccountId === item.id"
-              :toggling="grokTogglingAccountId === item.id"
-              :deleting="grokRemovingAccountId === item.id"
-              :authorizing="grokAuthorizingAccountId === item.id"
-              :oauth-action="grokOAuthActionFor(item)"
-              @toggle-select="toggleGrokAccountSelection"
-              @credentials="openGrokLoginCredentials"
-              @sync="syncGrokAccount"
-              @refresh="refreshGrokAccount"
-              @test="testGrokAccount"
-              @chat="openGrokConversationTest"
-              @toggle-disabled="toggleGrokAccountDisabled"
-              @remove="removeGrokAccount"
-              @oauth-sync="syncGrokOAuthAccount"
-              @oauth-authorize="authorizeGrokOAuthAccount"
-              @oauth-refresh="refreshGrokOAuthAccount"
-              @oauth-toggle="toggleGrokOAuthAccount"
-              @oauth-remove="removeGrokOAuthAccount"
-            />
-          </tbody>
-        </table>
-      </TableShell>
-
-      <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <div v-if="!grokLoading && grokAccounts.length === 0" class="col-span-full">
-          <EmptyState
-            plain
-            title="暂无 Grok 账号"
-            description="Grok 纯协议注册成功后，账号会自动进入这里。"
-          />
-        </div>
-
-        <GrokAccountGridCard
-          v-for="item in grokAccounts"
-          :key="`${item.id}-grok-card`"
-          :item="item"
-          :selected="isGrokAccountSelected(item.id)"
-          :runtime-available="grokRuntimeAvailable"
-          :busy="grokBatchBusy"
-          :syncing="grokSyncingAccountId === item.id"
-          :refreshing="grokRefreshingAccountId === item.id"
-          :testing="grokTestingAccountId === item.id"
-          :chatting="grokChattingAccountId === item.id"
-          :toggling="grokTogglingAccountId === item.id"
-          :deleting="grokRemovingAccountId === item.id"
-          :authorizing="grokAuthorizingAccountId === item.id"
-          :oauth-action="grokOAuthActionFor(item)"
-          @toggle-select="toggleGrokAccountSelection"
-          @credentials="openGrokLoginCredentials"
-          @sync="syncGrokAccount"
-          @refresh="refreshGrokAccount"
-          @test="testGrokAccount"
-          @chat="openGrokConversationTest"
-          @toggle-disabled="toggleGrokAccountDisabled"
-          @remove="removeGrokAccount"
-          @oauth-sync="syncGrokOAuthAccount"
-          @oauth-authorize="authorizeGrokOAuthAccount"
-          @oauth-refresh="refreshGrokOAuthAccount"
-          @oauth-toggle="toggleGrokOAuthAccount"
-          @oauth-remove="removeGrokOAuthAccount"
-        />
-      </div>
-
-      <ListPagination
-        v-model:page="grokCurrentPage"
-        v-model:page-size="grokPageSize"
-        :total-count="grokAccountListTotal"
-        :page-size-options="grokPageSizeOptions"
-        unit="个 Grok 账号"
-        :disabled="grokLoading"
-      />
-    </PagePanel>
-
     <AccountBulkBar
-      v-if="activeAccountPlatform === 'gpt'"
       :selected-count="selectedCount"
       :busy="batchBusy"
       :busy-label="batchActionLabel"
@@ -432,37 +202,7 @@
       @clear="clearSelection"
     />
 
-    <AccountBulkBar
-      v-if="activeAccountPlatform === 'grok'"
-      :selected-count="grokSelectedCount"
-      :busy="grokBatchBusy"
-      :busy-label="grokBatchActionLabel"
-      :items="grokBatchMenuItems"
-      @select="runGrokBulkAction"
-      @clear="clearGrokSelection"
-    />
-
-    <GrokLoginCredentialsModal
-      :open="Boolean(grokCredentialsAccount)"
-      :account="grokCredentialsAccount"
-      @close="grokCredentialsAccount = null"
-    />
-
-    <GrokAccountConversationTestModal
-      :open="Boolean(grokConversationAccount)"
-      :account="grokConversationAccount"
-      @close="closeGrokConversationTest"
-      @running="setGrokConversationRunning"
-    />
-
-    <GrokOAuthAccountsPanel
-      ref="grokOAuthPanelRef"
-      :open="activeAccountPlatform === 'grok' && showGrokOAuthAccess"
-      @close="showGrokOAuthAccess = false"
-      @changed="handleGrokOAuthChanged"
-    />
-
-    <ModalShell :open="activeAccountPlatform === 'gpt' && showModal" max-width="44rem" :z-index="120">
+    <ModalShell :open="showModal" max-width="44rem" :z-index="120">
             <ModalHeader :title="editingId ? '编辑账号' : '添加账号'" :bordered="false" compact @close="closeModal" />
 
             <ModalBody density="compact" class="space-y-3">
@@ -705,7 +445,7 @@
             </ModalFooter>
     </ModalShell>
 
-    <ModalShell :open="activeAccountPlatform === 'gpt' && showAccountGroupsModal" max-width="58rem" :z-index="130">
+    <ModalShell :open="showAccountGroupsModal" max-width="58rem" :z-index="130">
             <ModalHeader
               title="账号组管理"
               subtitle="先创建账号组，再在账号列表勾选账号批量绑定。"
@@ -843,7 +583,7 @@
             </div>
     </ModalShell>
 
-    <ModalShell :open="activeAccountPlatform === 'gpt' && showImportModal" max-width="58rem" :z-index="120">
+    <ModalShell :open="showImportModal" max-width="58rem" :z-index="120">
             <ModalHeader title="导入账号" :close-disabled="importModalBusy" compact @close="closeImportModal" />
 
             <div class="grid grid-cols-1 gap-0 md:grid-cols-[15rem_1fr]">
@@ -988,7 +728,7 @@
             </div>
     </ModalShell>
 
-    <ModalShell :open="activeAccountPlatform === 'gpt' && showRefreshProgress" max-width="34rem" :z-index="140">
+    <ModalShell :open="showRefreshProgress" max-width="34rem" :z-index="140">
           <ModalHeader
             :title="refreshProgressTitle || '刷新账号信息和额度'"
             :close-disabled="batchBusy && !refreshProgress?.done"
@@ -1027,13 +767,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { Button, Checkbox, EmptyState, Input } from 'nanocat-ui'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
-import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
 import FilterToolbar from '@/components/ai/FilterToolbar.vue'
 import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
@@ -1054,23 +792,10 @@ import SurfaceBox from '@/components/ai/SurfaceBox.vue'
 import TableShell from '@/components/ai/TableShell.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
-import type { GrokOAuthAccount } from '@/api/grokOAuthAccounts'
-import {
-  grokAccountsApi,
-  type GrokAccount,
-  type GrokQuotaMode,
-} from '@/api/grokAccounts'
 import AccountGridCard from './accounts/AccountGridCard.vue'
 import AccountTableRow from './accounts/AccountTableRow.vue'
-import GrokAccountConversationTestModal from './accounts/GrokAccountConversationTestModal.vue'
-import GrokAccountGridCard from './accounts/GrokAccountGridCard.vue'
-import GrokAccountTableRow from './accounts/GrokAccountTableRow.vue'
-import GrokLoginCredentialsModal from './accounts/GrokLoginCredentialsModal.vue'
-import GrokOAuthAccountsPanel from './accounts/GrokOAuthAccountsPanel.vue'
 import { useAccountsPage } from './accounts/useAccountsPage'
 import { useAccountActionMenuRuntime } from './accounts/accountActionMenuRuntime'
-import { useGrokAccountsPage } from './accounts/useGrokAccountsPage'
-import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/errorMessage'
 import {
@@ -1085,7 +810,6 @@ import {
 defineOptions({ name: 'Accounts' })
 
 const RemoteAccountImportPanel = defineAsyncComponent(() => import('@/components/ai/RemoteAccountImportPanel.vue'))
-const confirmDialog = useConfirmDialog()
 const toast = useToast()
 const showLoginPassword = ref(false)
 const showTwoFactorSecret = ref(false)
@@ -1248,353 +972,6 @@ watch(showModal, (visible) => {
   showLoginPassword.value = false
   showTwoFactorSecret.value = false
 })
-
-const {
-  loading: grokLoading,
-  keyword: grokKeyword,
-  statusFilter: grokStatusFilter,
-  statusFilterOptions: grokStatusFilterOptions,
-  accounts: grokAccounts,
-  summary: grokSummary,
-  runtimeAvailable: grokRuntimeAvailable,
-  runtimeError: grokRuntimeError,
-  probePollingEnabled: grokProbePollingEnabled,
-  probePollingBusy: grokProbePollingBusy,
-  toggleProbePolling: toggleGrokProbePolling,
-  accountListTotal: grokAccountListTotal,
-  accountAllTotal: grokAccountAllTotal,
-  currentPage: grokCurrentPage,
-  pageSize: grokPageSize,
-  pageSizeOptions: grokPageSizeOptions,
-  viewMode: grokViewMode,
-  selectedCount: grokSelectedCount,
-  allVisibleSelected: grokAllVisibleSelected,
-  isSelected: isGrokAccountSelected,
-  toggleSelect: toggleGrokAccountSelection,
-  toggleSelectAllVisible: toggleSelectAllVisibleGrokAccounts,
-  clearSelection: clearGrokSelection,
-  batchBusy: grokBatchBusy,
-  batchActionLabel: grokBatchActionLabel,
-  authorizingAccountId: grokAuthorizingAccountId,
-  authorizeOAuth: authorizeGrokOAuth,
-  syncingAccountId: grokSyncingAccountId,
-  syncAccounts: syncGrokAccounts,
-  refreshingAccountId: grokRefreshingAccountId,
-  refreshRuntime: refreshGrokRuntime,
-  testingAccountId: grokTestingAccountId,
-  testAccountValidity: testGrokAccountValidity,
-  togglingAccountId: grokTogglingAccountId,
-  setRuntimeDisabled: setGrokRuntimeDisabled,
-  removingAccountId: grokRemovingAccountId,
-  exportBusy: grokExportBusy,
-  setViewMode: setGrokViewMode,
-  loadData: loadGrokAccounts,
-  removeAccount: removeGrokAccount,
-  runBulkAction: runGrokBulkAction,
-  exportAccounts: exportGrokAccounts,
-  exportSsoAccounts: grokExportSsoAccounts,
-} = useGrokAccountsPage()
-
-type AccountPlatformView = 'gpt' | 'grok'
-
-const route = useRoute()
-const router = useRouter()
-
-function accountPlatformFromQuery(value: unknown): AccountPlatformView {
-  return String(value || '').trim().toLowerCase() === 'grok' ? 'grok' : 'gpt'
-}
-
-const activeAccountPlatform = ref<AccountPlatformView>(accountPlatformFromQuery(route.query.platform))
-const grokCredentialsAccount = ref<GrokAccount | null>(null)
-const grokConversationAccount = ref<GrokAccount | null>(null)
-const grokChattingAccountId = ref('')
-type GrokOAuthPanelRef = {
-  refreshAccount: (id: string) => Promise<void>
-  syncModels: (id: string) => Promise<void>
-  setDisabled: (account: GrokOAuthAccount) => Promise<void>
-  removeAccount: (id: string) => Promise<void>
-}
-type GrokOAuthRowAction = 'sync' | 'refresh' | 'toggle' | 'remove'
-const grokOAuthPanelRef = ref<GrokOAuthPanelRef | null>(null)
-const showGrokOAuthAccess = ref(false)
-const grokOAuthRowAction = reactive<{ accountId: string; action: GrokOAuthRowAction | '' }>({
-  accountId: '',
-  action: '',
-})
-const accountPlatformOptions = computed(() => [
-  { value: 'gpt', label: `GPT (${accountAllTotal.value})` },
-  { value: 'grok', label: `Grok (${grokAccountAllTotal.value})` },
-])
-
-const grokExportMenuItems = computed(() => [
-  {
-    key: 'selected',
-    label: `导出选中${grokSelectedCount.value ? ` (${grokSelectedCount.value})` : ''}`,
-    disabled: grokSelectedCount.value === 0,
-    children: [
-      { key: 'selected_sub2api', label: 'Sub2API 格式 (.json)' },
-      { key: 'selected_cpa', label: 'CPA 格式 (.zip)' },
-      { key: 'selected_sso', label: 'SSO 格式 (.txt)' },
-    ],
-  },
-  {
-    key: 'all',
-    label: '导出全部',
-    disabled: grokAccountAllTotal.value === 0,
-    dividerBefore: true,
-    children: [
-      { key: 'all_sub2api', label: 'Sub2API 格式 (.json)' },
-      { key: 'all_cpa', label: 'CPA 格式 (.zip)' },
-      { key: 'all_sso', label: 'SSO 格式 (.txt)' },
-    ],
-  },
-])
-
-const grokBatchMenuItems = computed(() => [
-  { key: 'authorize', label: 'OAuth 授权' },
-  { key: 'sync', label: '加入运行池', disabled: !grokRuntimeAvailable.value },
-  { key: 'refresh', label: '刷新状态和额度', disabled: !grokRuntimeAvailable.value },
-  { key: 'disable', label: '禁用选中', disabled: !grokRuntimeAvailable.value },
-  { key: 'enable', label: '恢复选中', disabled: !grokRuntimeAvailable.value },
-  { key: 'delete', label: '删除选中', danger: true },
-])
-
-const grokQuotaMetricLabels: Record<GrokQuotaMode, string> = {
-  auto: 'Auto 余额',
-  fast: 'Fast 余额',
-  expert: 'Expert 余额',
-  heavy: 'Heavy 余额',
-  console: 'Console 余额',
-}
-
-function safeMetricNumber(value: unknown): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0
-}
-
-function optionalMetricNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null
-}
-
-const grokMetricItems = computed(() => {
-  const summary = grokSummary.value || {}
-  const syncedCount = optionalMetricNumber(summary.synced)
-  const items: Array<{
-    key: string
-    label: string
-    value: string | number
-    meta?: string
-    valueClass?: string
-  }> = [{
-    key: 'registration-total',
-    label: '注册总数',
-    value: safeMetricNumber(summary.total ?? grokAccountAllTotal.value),
-    meta: grokRuntimeAvailable.value
-      ? (syncedCount === null ? '运行时已就绪' : `已加入 ${syncedCount}`)
-      : '运行状态未连接',
-  }]
-
-  const runtimeTotal = safeMetricNumber(summary.runtime_total)
-  const oauthTotal = safeMetricNumber(summary.oauth_total)
-  const oauthLinked = safeMetricNumber(summary.oauth_linked)
-  items.push({
-    key: 'oauth-total',
-    label: 'OAuth 已授权',
-    value: oauthLinked,
-    meta: `OAuth 凭据 ${oauthTotal}`,
-    valueClass: 'text-emerald-600',
-  })
-
-  const oauthStatus = summary.oauth_status || {}
-  const oauthMetrics = [
-    { key: 'oauth-normal', label: 'OAuth 正常', value: optionalMetricNumber(oauthStatus.normal), valueClass: 'text-emerald-600' },
-    { key: 'oauth-limited', label: 'OAuth 限流', value: optionalMetricNumber(oauthStatus.limited), valueClass: 'text-amber-600' },
-    { key: 'oauth-no-quota', label: '无额度/无订阅', value: optionalMetricNumber(oauthStatus.no_quota), valueClass: 'text-amber-600' },
-    { key: 'oauth-expired', label: 'OAuth 过期', value: optionalMetricNumber(oauthStatus.expired), valueClass: 'text-rose-600' },
-    { key: 'oauth-invalid', label: 'OAuth 失效', value: optionalMetricNumber(oauthStatus.invalid), valueClass: 'text-rose-600' },
-    { key: 'oauth-unknown', label: 'OAuth 未确认', value: optionalMetricNumber(oauthStatus.unknown), valueClass: 'text-amber-600' },
-    { key: 'oauth-unauthorized', label: 'OAuth 未授权', value: optionalMetricNumber(oauthStatus.unauthorized), valueClass: 'text-muted-foreground' },
-    { key: 'oauth-denied', label: 'OAuth 拒绝', value: optionalMetricNumber(oauthStatus.denied), valueClass: 'text-rose-600' },
-  ]
-  for (const metric of oauthMetrics) {
-    if (metric.value === null) continue
-    items.push({ ...metric, value: metric.value })
-  }
-
-  if (!grokRuntimeAvailable.value || runtimeTotal <= 0) {
-    items.push({
-      key: 'runtime-connection',
-      label: 'Grok 运行时',
-      value: grokRuntimeAvailable.value ? '已连接' : '不可用',
-      meta: grokRuntimeAvailable.value ? '尚无已加入运行账号' : (grokRuntimeError.value || '请检查运行时状态'),
-      valueClass: grokRuntimeAvailable.value ? 'text-emerald-600' : 'text-amber-600',
-    })
-    return items
-  }
-
-  const runtimeMetrics = [
-    { key: 'calls-total', label: '调用总数', value: optionalMetricNumber(summary.calls_total), valueClass: '' },
-  ]
-  for (const metric of runtimeMetrics) {
-    if (metric.value === null) continue
-    items.push({ ...metric, value: metric.value })
-  }
-
-  const quota = summary.quota || {}
-  for (const mode of Object.keys(grokQuotaMetricLabels) as GrokQuotaMode[]) {
-    const value = optionalMetricNumber(quota[mode])
-    if (value === null) continue
-    items.push({ key: `quota-${mode}`, label: grokQuotaMetricLabels[mode], value })
-  }
-  return items
-})
-
-const grokOAuthTotal = computed(() => safeMetricNumber(grokSummary.value?.oauth_total))
-
-function applyActiveAccountPlatform(value: AccountPlatformView) {
-  activeAccountPlatform.value = value
-  if (value !== 'grok') grokCredentialsAccount.value = null
-  if (value !== 'grok') showGrokOAuthAccess.value = false
-  if (value !== 'grok' && !grokChattingAccountId.value) grokConversationAccount.value = null
-  if (value === 'grok' && !grokLoading.value && grokAccounts.value.length === 0) {
-    void loadGrokAccounts({ silentErrorToast: true })
-  }
-}
-
-function setActiveAccountPlatform(value: string) {
-  if (value !== 'gpt' && value !== 'grok') return
-  applyActiveAccountPlatform(value)
-
-  const current = accountPlatformFromQuery(route.query.platform)
-  if (current === value) return
-  const query = { ...route.query }
-  if (value === 'grok') query.platform = 'grok'
-  else delete query.platform
-  void router.replace({ name: 'accounts', query })
-}
-
-watch(
-  () => route.query.platform,
-  (value) => {
-    const platform = accountPlatformFromQuery(value)
-    if (platform !== activeAccountPlatform.value) applyActiveAccountPlatform(platform)
-  },
-)
-
-async function handleGrokExportAction(action: string) {
-  const match = action.match(/^(selected|all)_(sub2api|cpa|sso)$/)
-  if (!match) return
-  if (match[2] === 'sso') {
-    await grokExportSsoAccounts(match[1] as 'selected' | 'all')
-    return
-  }
-  await exportGrokAccounts(
-    match[1] as 'selected' | 'all',
-    match[2] as 'sub2api' | 'cpa',
-  )
-}
-
-async function syncGrokAccount(item: GrokAccount) {
-  await syncGrokAccounts([item.id])
-}
-
-async function refreshGrokAccount(item: GrokAccount) {
-  await refreshGrokRuntime([item.id])
-}
-
-async function testGrokAccount(item: GrokAccount) {
-  await testGrokAccountValidity(item)
-}
-
-function openGrokConversationTest(item: GrokAccount) {
-  if (!item.has_sso || grokChattingAccountId.value) return
-  grokConversationAccount.value = item
-}
-
-function closeGrokConversationTest() {
-  if (grokChattingAccountId.value) return
-  grokConversationAccount.value = null
-}
-
-function setGrokConversationRunning(accountId: string, running: boolean) {
-  if (running) {
-    grokChattingAccountId.value = accountId
-    return
-  }
-  if (grokChattingAccountId.value !== accountId) return
-  grokChattingAccountId.value = ''
-  void loadGrokAccounts({ silentErrorToast: true }).then(() => {
-    const refreshed = grokAccounts.value.find((item) => item.id === accountId)
-    if (refreshed && grokConversationAccount.value?.id === accountId) {
-      grokConversationAccount.value = refreshed
-    }
-  })
-}
-
-async function toggleGrokAccountDisabled(item: GrokAccount) {
-  const disabled = String(item.runtime_status || '').toLowerCase() !== 'disabled'
-  await setGrokRuntimeDisabled([item.id], disabled)
-}
-
-function authorizeGrokOAuthAccount(item: GrokAccount) {
-  return authorizeGrokOAuth([item.id])
-}
-
-function grokOAuthActionFor(item: GrokAccount) {
-  if (!grokOAuthRowAction.accountId) return ''
-  return grokOAuthRowAction.accountId === item.id ? grokOAuthRowAction.action : 'busy'
-}
-
-async function runGrokOAuthAccountAction(item: GrokAccount, action: GrokOAuthRowAction) {
-  const oauth = item.oauth
-  const panel = grokOAuthPanelRef.value
-  if (!oauth || !panel || grokOAuthRowAction.accountId) return
-  grokOAuthRowAction.accountId = item.id
-  grokOAuthRowAction.action = action
-  try {
-    if (action === 'sync') await panel.syncModels(oauth.id)
-    if (action === 'refresh') await panel.refreshAccount(oauth.id)
-    if (action === 'toggle') await panel.setDisabled(oauth)
-    if (action === 'remove') await panel.removeAccount(oauth.id)
-  } finally {
-    grokOAuthRowAction.accountId = ''
-    grokOAuthRowAction.action = ''
-  }
-}
-
-function syncGrokOAuthAccount(item: GrokAccount) {
-  return runGrokOAuthAccountAction(item, 'sync')
-}
-
-function refreshGrokOAuthAccount(item: GrokAccount) {
-  return runGrokOAuthAccountAction(item, 'refresh')
-}
-
-function toggleGrokOAuthAccount(item: GrokAccount) {
-  return runGrokOAuthAccountAction(item, 'toggle')
-}
-
-async function removeGrokOAuthAccount(item: GrokAccount) {
-  if (!item.oauth) return
-  const confirmed = await confirmDialog.ask({
-    title: '移除 OAuth',
-    message: `将移除 ${item.email || item.id} 的 OAuth 凭据，注册账号和 SSO 登录态会保留。是否继续？`,
-    confirmText: '移除 OAuth',
-    cancelText: '取消',
-  })
-  if (confirmed) await runGrokOAuthAccountAction(item, 'remove')
-}
-
-function handleGrokOAuthChanged() {
-  void loadGrokAccounts({ silentErrorToast: true, silentLoading: true })
-}
-
-function openGrokLoginCredentials(item: GrokAccount) {
-  if (!item.has_password) return
-  grokCredentialsAccount.value = item
-}
 
 const manualTokenFileInputRef = ref<HTMLInputElement | null>(null)
 const cpaFileInputRef = ref<HTMLInputElement | null>(null)

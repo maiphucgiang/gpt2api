@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/store"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 var ErrUnavailable = errors.New("no available accounts")
@@ -65,9 +65,7 @@ func (p *Pool) Reserve(ctx context.Context, pools []string, excluded map[string]
 	return p.ReserveMatching(ctx, pools, excluded, nil)
 }
 
-// ReserveMatching is the common account leasing path with an optional
-// provider predicate. This keeps OpenAI JWT accounts separate from Grok SSO
-// accounts even when both are stored in the same account file.
+// ReserveMatching leases an account accepted by the provider predicate.
 func (p *Pool) ReserveMatching(ctx context.Context, pools []string, excluded map[string]bool, match func(Account) bool) (*Lease, error) {
 	return p.ReserveMatchingLimit(ctx, pools, excluded, match, 0)
 }
@@ -159,8 +157,12 @@ func (p *Pool) signalLocked() {
 }
 
 func (p *Pool) Feedback(account Account, status int, err error) {
-	if account.Token == "" {
+	if account.Token == "" || errors.Is(err, context.Canceled) {
 		return
+	}
+	if current, recordErr := p.repository.RecordAccountResult(account.Token, store.AccountID(account.Fields), status >= 200 && status < 300 && err == nil); recordErr == nil {
+		account.Token = stringValue(current["access_token"])
+		account.Fields = current
 	}
 	p.mu.Lock()
 	if status >= 200 && status < 300 {

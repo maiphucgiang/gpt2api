@@ -26,15 +26,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 	"golang.org/x/crypto/sha3"
 )
 
-// OpenAIImage implements the authenticated ChatGPT Web image flow. It is kept
-// separate from Media because ChatGPT JWTs and Grok SSO cookies are different
-// credential families and must never share request headers or account pools.
+// OpenAIImage implements the authenticated ChatGPT Web image flow.
 type OpenAIImage struct {
 	BaseURL        string
 	Client         *http.Client

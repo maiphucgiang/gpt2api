@@ -32,12 +32,6 @@ const router = createRouter({
           meta: { adminOnly: true },
         },
         {
-          path: 'grok-runtime',
-          name: 'grok-runtime',
-          redirect: { name: 'accounts', query: { platform: 'grok' } },
-          meta: { adminOnly: true },
-        },
-        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/Settings.vue'),

@@ -19,7 +19,7 @@
             v-model="config.mode"
             :groups="registerModeGroups"
             selected-indicator="none"
-            :disabled="config.enabled || config.target === 'grok'"
+            :disabled="config.enabled"
             block
           />
         </label>
@@ -457,345 +457,6 @@
       </div>
     </FormSection>
 
-    <FormSection v-if="config.target === 'grok'" title="Grok 注册协议" density="roomy">
-      <div class="register-form-grid register-form-grid--grok">
-        <label class="register-field">
-          <span class="register-label">注册链路</span>
-          <GroupedSelectMenu
-            v-model="config.grok.signup_flow"
-            :groups="grokSignupFlowGroups"
-            selected-indicator="none"
-            :disabled="config.enabled"
-            block
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">Turnstile 服务</span>
-          <GroupedSelectMenu
-            v-model="config.grok.provider"
-            :groups="turnstileProviderGroups"
-            selected-indicator="none"
-            :disabled="config.enabled"
-            block
-          />
-        </label>
-
-        <label v-if="config.grok.provider !== 'local'" class="register-field">
-          <span class="register-label">API Key</span>
-          <Input
-            v-model.trim="config.grok.api_key"
-            type="password"
-            autocomplete="off"
-            block
-            root-class="font-mono"
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">API Base</span>
-          <Input
-            v-model.trim="config.grok.api_base"
-            block
-            root-class="font-mono"
-            :placeholder="turnstileApiBasePlaceholder(config.grok.provider)"
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">HTTP 超时（秒）</span>
-          <Input
-            v-model.number="config.grok.request_timeout"
-            type="number"
-            min="1"
-            block
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label v-if="config.grok.provider === 'local'" class="register-field">
-          <span class="register-label">注册解题并发</span>
-          <Input
-            v-model.number="config.grok.local_concurrency"
-            type="number"
-            min="0"
-            max="64"
-            step="1"
-            block
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">解题超时（秒）</span>
-          <Input
-            v-model.number="config.grok.captcha_timeout"
-            type="number"
-            min="1"
-            block
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">轮询间隔（秒）</span>
-          <Input
-            v-model.number="config.grok.captcha_poll_interval"
-            type="number"
-            min="1"
-            max="60"
-            step="1"
-            block
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <template v-if="config.grok.provider === 'custom'">
-          <label class="register-field">
-            <span class="register-label">创建任务路径</span>
-            <Input
-              v-model.trim="config.grok.create_path"
-              block
-              root-class="font-mono"
-              placeholder="/createTask"
-              :disabled="config.enabled"
-            />
-          </label>
-
-          <label class="register-field">
-            <span class="register-label">查询结果路径</span>
-            <Input
-              v-model.trim="config.grok.result_path"
-              block
-              root-class="font-mono"
-              placeholder="/getTaskResult"
-              :disabled="config.enabled"
-            />
-          </label>
-        </template>
-
-        <label class="register-field">
-          <span class="register-label">邮箱重试次数</span>
-          <Input
-            v-model.number="config.grok.max_mail_retries"
-            type="number"
-            min="1"
-            max="20"
-            block
-            :disabled="config.enabled"
-          />
-        </label>
-
-      </div>
-    </FormSection>
-
-    <FormSection v-if="config.target === 'grok'" title="Grok 运行时账号池" density="roomy">
-      <div class="register-form-grid register-form-grid--grok">
-        <p class="register-proxy-hint register-field--full">
-          注册成功后会自动加入内置 Grok 运行时，并可继续完成 Grok 4.5 OAuth 协议授权。
-        </p>
-
-        <label class="register-toggle register-field--full">
-          <Checkbox
-            :model-value="config.grok.xai_cli_oauth_enabled"
-            :disabled="config.enabled"
-            @update:model-value="config.grok.xai_cli_oauth_enabled = Boolean($event)"
-          />
-          <span>
-            <strong>注册后自动协议授权</strong>
-            <small v-if="config.grok.xai_cli_oauth_flow === 'pkce_reference'">使用公网版 Authorization Code + PKCE，并加入 Grok 4.5 账号池。</small>
-            <small v-else>使用 xAI Device Code OAuth，并加入 Grok 4.5 账号池。</small>
-          </span>
-        </label>
-
-        <label
-          v-if="config.grok.xai_cli_oauth_flow === 'pkce_reference'"
-          class="register-field register-field--full"
-        >
-          <span class="register-label">公网版 PKCE 目录</span>
-          <Input
-            v-model.trim="config.grok.xai_cli_pkce_reference_dir"
-            block
-            root-class="font-mono"
-            placeholder="/path/to/Grok号池_公网中转版"
-            :disabled="config.enabled"
-          />
-        </label>
-
-        <label class="register-field">
-          <span class="register-label">账号池类型</span>
-          <GroupedSelectMenu
-            v-model="config.grok.grok2api_pool"
-            :groups="grokPoolGroups"
-            selected-indicator="none"
-            :disabled="config.enabled"
-            block
-          />
-        </label>
-
-        <label class="register-toggle">
-          <Checkbox
-            :model-value="config.grok.grok2api_verify_on_import"
-            :disabled="config.enabled"
-            @update:model-value="config.grok.grok2api_verify_on_import = Boolean($event)"
-          />
-          <span>
-            <strong>导入后刷新验证</strong>
-            <small>加入运行池后检查登录态、运行状态和真实额度。</small>
-          </span>
-        </label>
-
-        <label class="register-toggle">
-          <Checkbox
-            :model-value="config.grok.grok2api_auto_nsfw"
-            :disabled="config.enabled"
-            @update:model-value="config.grok.grok2api_auto_nsfw = Boolean($event)"
-          />
-          <span>
-            <strong>导入后开启 NSFW</strong>
-            <small>由内置 Grok 运行时完成检测与设置。</small>
-          </span>
-        </label>
-      </div>
-    </FormSection>
-
-    <FormSection
-      v-if="config.target === 'grok'"
-      title="OAuth 投递"
-      density="roomy"
-      :class="{ 'register-collapsible-section--collapsed': !oauthDeliveryExpanded }"
-    >
-      <template #actions>
-        <Button
-          size="sm"
-          variant="outline"
-          :disabled="oauthDeliveryLoading"
-          @click="refreshOAuthDeliveryConnections"
-        >
-          {{ oauthDeliveryLoading ? '刷新中...' : '刷新连接' }}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon-only
-          root-class="h-8 w-8 shrink-0"
-          :title="oauthDeliveryExpanded ? '收起 OAuth 投递' : '展开 OAuth 投递'"
-          :aria-label="oauthDeliveryExpanded ? '收起 OAuth 投递' : '展开 OAuth 投递'"
-          :aria-expanded="oauthDeliveryExpanded"
-          aria-controls="register-grok-oauth-delivery"
-          @click="oauthDeliveryExpanded = !oauthDeliveryExpanded"
-        >
-          <Icon
-            :icon="oauthDeliveryExpanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
-            class="h-4 w-4"
-          />
-        </Button>
-      </template>
-
-      <div v-show="oauthDeliveryExpanded" id="register-grok-oauth-delivery" class="register-form-grid">
-        <p class="register-proxy-hint register-field--full">
-          OAuth 凭据始终先保存到本地；两个远程目标可分别开启，投递失败不影响本地授权结果。
-        </p>
-        <p v-if="oauthDeliveryLoadError" class="sub2api-sync-message register-field--full sub2api-sync-message--error">
-          {{ oauthDeliveryLoadError }}
-        </p>
-
-        <label class="register-toggle register-field--full">
-          <Checkbox
-            :model-value="config.grok.oauth_delivery.sub2api.enabled"
-            :disabled="config.enabled"
-            @update:model-value="config.grok.oauth_delivery.sub2api.enabled = Boolean($event)"
-          />
-          <span>
-            <strong>上传到 Sub2API</strong>
-            <small>使用 xAI OAuth 账号类型写入选定分组。</small>
-          </span>
-        </label>
-
-        <template v-if="config.grok.oauth_delivery.sub2api.enabled">
-          <p v-if="!sub2apiServers.length && !oauthDeliveryLoading" class="sub2api-sync-message register-field--full">
-            尚未配置 Sub2API 连接。
-          </p>
-          <label v-else class="register-field register-field--full">
-            <span class="register-label">Sub2API 连接</span>
-            <GroupedSelectMenu
-              :model-value="config.grok.oauth_delivery.sub2api.server_id"
-              :groups="oauthDeliverySub2APIServerGroups"
-              selected-indicator="none"
-              :disabled="config.enabled || oauthDeliveryLoading"
-              block
-              @update:model-value="updateOAuthDeliverySub2APIServer"
-            />
-          </label>
-
-          <template v-if="config.grok.oauth_delivery.sub2api.server_id">
-            <label class="register-field">
-              <span class="register-label">远程分组方式</span>
-              <GroupedSelectMenu
-                :model-value="config.grok.oauth_delivery.sub2api.group_mode"
-                :groups="sub2apiGroupModeGroups"
-                selected-indicator="none"
-                :disabled="config.enabled"
-                block
-                @update:model-value="updateOAuthDeliveryGroupMode"
-              />
-            </label>
-            <label v-if="config.grok.oauth_delivery.sub2api.group_mode === 'existing'" class="register-field">
-              <span class="register-label">xAI 远程分组</span>
-              <GroupedSelectMenu
-                :model-value="config.grok.oauth_delivery.sub2api.group_id"
-                :groups="oauthDeliveryRemoteGroupGroups"
-                selected-indicator="none"
-                :disabled="config.enabled || oauthDeliveryGroupsLoading"
-                block
-                @update:model-value="config.grok.oauth_delivery.sub2api.group_id = selectValue($event)"
-              />
-            </label>
-            <label v-else class="register-field">
-              <span class="register-label">自定义 xAI 分组</span>
-              <Input
-                v-model.trim="config.grok.oauth_delivery.sub2api.group_name"
-                block
-                placeholder="例如：Grok OAuth"
-                :disabled="config.enabled"
-              />
-            </label>
-          </template>
-        </template>
-
-        <label class="register-toggle register-field--full">
-          <Checkbox
-            :model-value="config.grok.oauth_delivery.cpa.enabled"
-            :disabled="config.enabled"
-            @update:model-value="config.grok.oauth_delivery.cpa.enabled = Boolean($event)"
-          />
-          <span>
-            <strong>上传到 CPA</strong>
-            <small>写入 CLIProxyAPI 兼容的 xAI OAuth JSON 文件。</small>
-          </span>
-        </label>
-
-        <template v-if="config.grok.oauth_delivery.cpa.enabled">
-          <p v-if="!cpaPools.length && !oauthDeliveryLoading" class="sub2api-sync-message register-field--full">
-            尚未配置 CPA 连接。
-          </p>
-          <label v-else class="register-field register-field--full">
-            <span class="register-label">CPA 连接</span>
-            <GroupedSelectMenu
-              :model-value="config.grok.oauth_delivery.cpa.pool_id"
-              :groups="oauthDeliveryCPAPoolGroups"
-              selected-indicator="none"
-              :disabled="config.enabled || oauthDeliveryLoading"
-              block
-              @update:model-value="config.grok.oauth_delivery.cpa.pool_id = selectValue($event)"
-            />
-          </label>
-        </template>
-      </div>
-    </FormSection>
-
     <FormSection
       title="邮箱请求"
       density="roomy"
@@ -886,12 +547,9 @@ import type { CPAPool, Sub2APIRemoteGroup, Sub2APIServer } from '@/api/accountIm
 import { proxyApi, type ProxySampleTestResult } from '@/api/proxy'
 import type { LegacyRegisterConfig } from '@/api/register'
 import {
-  grokSignupFlowGroups,
   registerModeGroups,
   registerProxyModeGroups,
   registerTargetOptions,
-  turnstileApiBasePlaceholder,
-  turnstileProviderGroups,
   type RegisterProxyMode,
 } from '@/views/register/registerProviderView'
 
@@ -905,14 +563,6 @@ const pixProtocolOptions = [
   { value: 'reference', label: '方案 2 · 参考' },
   { value: 'standalone', label: '方案 3 · BR/VN' },
 ]
-const grokPoolGroups = [{
-  options: [
-    { value: 'auto', label: '自动检测（推荐）' },
-    { value: 'basic', label: 'Basic' },
-    { value: 'super', label: 'Super' },
-    { value: 'heavy', label: 'Heavy' },
-  ],
-}]
 const sub2apiGroupModeGroups = [{
   options: [
     { value: 'existing', label: '选择已有分组' },
@@ -936,15 +586,9 @@ const sub2apiLoadError = ref('')
 const sub2apiExpanded = ref(false)
 const openAICPALoading = ref(false)
 const openAICPALoadError = ref('')
-const oauthDeliveryExpanded = ref(false)
-const oauthDeliveryLoading = ref(false)
-const oauthDeliveryGroupsLoading = ref(false)
-const oauthDeliveryLoadError = ref('')
-const oauthDeliveryRemoteGroups = ref<Sub2APIRemoteGroup[]>([])
 const cpaPools = ref<CPAPool[]>([])
 const mailRequestExpanded = ref(false)
 let sub2apiGroupRequestVersion = 0
-let oauthDeliveryGroupRequestVersion = 0
 
 type CheckoutProxyTestStage = 'checkout' | 'promotion'
 
@@ -1062,51 +706,6 @@ const sub2apiRemoteGroupGroups = computed(() => {
   return [{ options }]
 })
 
-const oauthDeliverySub2APIServerGroups = computed(() => {
-  const options = [
-    { label: '选择 Sub2API 连接', value: '' },
-    ...sub2apiServers.value.map((server) => ({
-      label: server.name || server.base_url || server.id,
-      value: server.id,
-    })),
-  ]
-  const currentId = String(props.config.grok.oauth_delivery.sub2api.server_id || '').trim()
-  if (currentId && !options.some((option) => option.value === currentId)) {
-    options.push({ label: `当前连接（不可用）· ${currentId}`, value: currentId })
-  }
-  return [{ options }]
-})
-
-const oauthDeliveryRemoteGroupGroups = computed(() => {
-  const options = [
-    { label: '选择 xAI 远程分组', value: '' },
-    ...oauthDeliveryRemoteGroups.value.map((group) => ({
-      label: `${group.name || group.id}${group.account_count ? ` · ${group.active_account_count}/${group.account_count}` : ''}`,
-      value: group.id,
-    })),
-  ]
-  const currentId = String(props.config.grok.oauth_delivery.sub2api.group_id || '').trim()
-  if (currentId && !options.some((option) => option.value === currentId)) {
-    options.push({ label: `当前分组（未加载）· ${currentId}`, value: currentId })
-  }
-  return [{ options }]
-})
-
-const oauthDeliveryCPAPoolGroups = computed(() => {
-  const options = [
-    { label: '选择 CPA 连接', value: '' },
-    ...cpaPools.value.map((pool) => ({
-      label: pool.name || pool.base_url || pool.id,
-      value: pool.id,
-    })),
-  ]
-  const currentId = String(props.config.grok.oauth_delivery.cpa.pool_id || '').trim()
-  if (currentId && !options.some((option) => option.value === currentId)) {
-    options.push({ label: `当前连接（不可用）· ${currentId}`, value: currentId })
-  }
-  return [{ options }]
-})
-
 const openAICPAPoolGroups = computed(() => {
   const options = [
     { label: '选择 CPA 连接', value: '' },
@@ -1186,72 +785,6 @@ async function refreshOpenAIConnections() {
   await Promise.all([refreshSub2APIConnections(), refreshOpenAICPAConnections()])
 }
 
-async function loadOAuthDeliveryRemoteGroups(serverId: string) {
-  const normalizedServerId = String(serverId || '').trim()
-  const requestVersion = ++oauthDeliveryGroupRequestVersion
-  if (!normalizedServerId) {
-    oauthDeliveryRemoteGroups.value = []
-    oauthDeliveryGroupsLoading.value = false
-    return
-  }
-  oauthDeliveryGroupsLoading.value = true
-  try {
-    const response = await accountImportsApi.listSub2APIServerGroups(normalizedServerId)
-    if (requestVersion !== oauthDeliveryGroupRequestVersion) return
-    oauthDeliveryRemoteGroups.value = (Array.isArray(response.groups) ? response.groups : [])
-      .filter((group) => ['', 'xai', 'grok'].includes(String(group.platform || '').trim().toLowerCase()))
-    oauthDeliveryLoadError.value = ''
-  } catch (error: any) {
-    if (requestVersion !== oauthDeliveryGroupRequestVersion) return
-    oauthDeliveryRemoteGroups.value = []
-    oauthDeliveryLoadError.value = error?.message || '加载 Sub2API xAI 分组失败'
-  } finally {
-    if (requestVersion === oauthDeliveryGroupRequestVersion) oauthDeliveryGroupsLoading.value = false
-  }
-}
-
-async function refreshOAuthDeliveryConnections() {
-  oauthDeliveryLoading.value = true
-  oauthDeliveryLoadError.value = ''
-  const [sub2apiResult, cpaResult] = await Promise.allSettled([
-    accountImportsApi.listSub2APIServers(),
-    accountImportsApi.listCPAPools(),
-  ])
-  if (sub2apiResult.status === 'fulfilled') {
-    sub2apiServers.value = Array.isArray(sub2apiResult.value.servers) ? sub2apiResult.value.servers : []
-  } else {
-    sub2apiServers.value = []
-    oauthDeliveryLoadError.value = sub2apiResult.reason?.message || '加载 Sub2API 连接失败'
-  }
-  if (cpaResult.status === 'fulfilled') {
-    cpaPools.value = Array.isArray(cpaResult.value.pools) ? cpaResult.value.pools : []
-  } else {
-    cpaPools.value = []
-    oauthDeliveryLoadError.value ||= cpaResult.reason?.message || '加载 CPA 连接失败'
-  }
-  oauthDeliveryLoading.value = false
-  const serverId = String(props.config.grok.oauth_delivery.sub2api.server_id || '').trim()
-  if (serverId) await loadOAuthDeliveryRemoteGroups(serverId)
-  else oauthDeliveryRemoteGroups.value = []
-}
-
-function updateOAuthDeliverySub2APIServer(value: unknown) {
-  const delivery = props.config.grok.oauth_delivery.sub2api
-  const serverId = selectValue(value)
-  if (serverId === delivery.server_id) return
-  delivery.server_id = serverId
-  delivery.group_id = ''
-  delivery.group_name = ''
-}
-
-function updateOAuthDeliveryGroupMode(value: unknown) {
-  const delivery = props.config.grok.oauth_delivery.sub2api
-  const mode = selectValue(value) === 'custom' ? 'custom' : 'existing'
-  delivery.group_mode = mode
-  if (mode === 'custom') delivery.group_id = ''
-  else delivery.group_name = ''
-}
-
 function updateSub2APIServer(value: unknown) {
   const serverId = selectValue(value)
   if (serverId === props.config.sub2api_sync.server_id) return
@@ -1304,24 +837,6 @@ watch(
       && !openAICPALoading.value
     ) {
       void refreshOpenAIConnections()
-    }
-    if (target === 'grok' && !oauthDeliveryLoading.value && (!sub2apiServers.value.length || !cpaPools.value.length)) {
-      void refreshOAuthDeliveryConnections()
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  () => String(props.config.grok.oauth_delivery.sub2api.server_id || '').trim(),
-  (serverId, previousServerId) => {
-    if (String(props.config.target || '').trim().toLowerCase() !== 'grok') return
-    if (!serverId) {
-      oauthDeliveryRemoteGroups.value = []
-      return
-    }
-    if (serverId !== previousServerId || !oauthDeliveryRemoteGroups.value.length) {
-      void loadOAuthDeliveryRemoteGroups(serverId)
     }
   },
   { immediate: true },

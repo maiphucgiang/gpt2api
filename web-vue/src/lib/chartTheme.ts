@@ -55,15 +55,6 @@ export const modelColors: Record<string, string> = {
   'gpt-4o': modelColorPalette[7],
   'o3': modelColorPalette[9],
   'gpt-image-1': modelColorPalette[8],
-  'grok-4.5': modelColorPalette[9],
-  'grok-4.20-fast': modelColorPalette[3],
-  'grok-4.20-auto': modelColorPalette[4],
-  'grok-4.20-expert': modelColorPalette[5],
-  'grok-4.3-console': modelColorPalette[6],
-  'grok-imagine-image-lite': modelColorPalette[1],
-  'grok-imagine-image': modelColorPalette[2],
-  'grok-imagine-image-pro': modelColorPalette[7],
-  'grok-imagine-image-edit': modelColorPalette[8],
 }
 
 // 有效模型列表

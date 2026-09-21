@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 type runtimeMonitor struct {
@@ -1053,14 +1053,14 @@ func newDashboardProviderStats(provider string) map[string]any {
 func dashboardAccountStats(items []map[string]any) map[string]any {
 	total := newDashboardProviderStats("all")
 	providers := map[string]map[string]any{
-		"gpt":  newDashboardProviderStats("gpt"),
-		"grok": newDashboardProviderStats("grok"),
+		"gpt": newDashboardProviderStats("gpt"),
 	}
 	for _, item := range items {
-		provider := "grok"
-		if isOpenAIAccount(accounts.Account{Token: accountToken(item), Fields: item}) {
-			provider = "gpt"
+		if !isOpenAIAccount(accounts.Account{Token: accountToken(item), Fields: item}) {
+			total["unsupported"] = intValue(total["unsupported"]) + 1
+			continue
 		}
+		provider := "gpt"
 		for _, stats := range []map[string]any{total, providers[provider]} {
 			stats["total"] = intValue(stats["total"]) + 1
 			stats["cumulative_total"] = intValue(stats["cumulative_total"]) + 1
@@ -1087,10 +1087,10 @@ func dashboardAccountStats(items []map[string]any) map[string]any {
 			byType[accountType] = intValue(byType[accountType]) + 1
 		}
 	}
-	for _, stats := range []map[string]any{total, providers["gpt"], providers["grok"]} {
+	for _, stats := range []map[string]any{total, providers["gpt"]} {
 		stats["healthy"] = intValue(stats["active"]) > 0 || intValue(stats["unlimited_quota_count"]) > 0 || intValue(stats["unknown_quota_count"]) > 0
 	}
-	total["providers"] = map[string]any{"gpt": providers["gpt"], "grok": providers["grok"]}
+	total["providers"] = map[string]any{"gpt": providers["gpt"]}
 	return total
 }
 

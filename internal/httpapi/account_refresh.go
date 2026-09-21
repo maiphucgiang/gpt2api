@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/provider"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	"github.com/maiphucgiang/gpt2api/internal/provider"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 type accountRefreshProgress struct {
@@ -46,21 +46,11 @@ func (s *Server) accountAccessTokenRefresh(w http.ResponseWriter, r *http.Reques
 	updated := 0
 	errorsOut := make([]map[string]any, 0)
 	for _, ref := range refs {
-		account, err := s.accountByRef(ref)
-		if err != nil {
-			errorsOut = append(errorsOut, map[string]any{"token": tokenPreview(ref), "error": safeRefreshError(err)})
-			continue
-		}
-		oldToken := accountToken(account)
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-		result, refreshErr := s.openAIAccountClient().RefreshAccessToken(ctx, account)
+		_, refreshErr := s.refreshAccountSnapshotMode(ctx, ref, true)
 		cancel()
 		if refreshErr != nil {
 			errorsOut = append(errorsOut, map[string]any{"token": tokenPreview(ref), "error": safeRefreshError(refreshErr)})
-			continue
-		}
-		if _, _, err = s.store.RotateAccountTokens(oldToken, result.AccessToken, result.RefreshToken, result.IDToken, result.Fields); err != nil {
-			errorsOut = append(errorsOut, map[string]any{"token": tokenPreview(ref), "error": safeRefreshError(err)})
 			continue
 		}
 		updated++
@@ -110,7 +100,18 @@ func (s *Server) accountRefreshStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshMu.Unlock()
 
-	go s.runAccountRefresh(progressID, refs)
+	s.survivalMu.Lock()
+	if s.backgroundContext.Err() != nil {
+		s.survivalMu.Unlock()
+		writeError(w, http.StatusServiceUnavailable, "server is shutting down", "server_error")
+		return
+	}
+	s.backgroundWorkers.Add(1)
+	s.survivalMu.Unlock()
+	go func() {
+		defer s.backgroundWorkers.Done()
+		s.runAccountRefresh(progressID, refs)
+	}()
 	writeJSON(w, http.StatusOK, map[string]any{"progress_id": progressID})
 }
 
@@ -144,7 +145,7 @@ func (s *Server) accountRefreshProgressAPI(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) runAccountRefresh(progressID string, refs []string) {
-	ctx := context.Background()
+	ctx := s.backgroundContext
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, accountRefreshConcurrency())
 	for _, ref := range refs {
@@ -179,38 +180,9 @@ func (s *Server) runAccountRefresh(progressID string, refs []string) {
 func (s *Server) refreshOneAccount(parent context.Context, progressID, ref string) {
 	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
 	defer cancel()
-	items, err := s.store.AccountList()
+	updated, err := s.refreshAccountSnapshot(ctx, ref)
 	if err != nil {
 		s.recordRefreshError(progressID, ref, err)
-		return
-	}
-	var account map[string]any
-	for _, item := range items {
-		if accountRefMatches(item, ref) {
-			account = item
-			break
-		}
-	}
-	if account == nil {
-		s.recordRefreshError(progressID, ref, errors.New("account not found"))
-		return
-	}
-	token := accountToken(account)
-	result, err := s.openAIAccountClient().RefreshAccount(ctx, account)
-	if err != nil {
-		if updates := accountRefreshFailureUpdates(err); len(updates) > 0 {
-			_, _, _ = s.store.UpdateAccount(token, updates)
-		}
-		s.recordRefreshError(progressID, ref, err)
-		return
-	}
-	updated, _, updateErr := s.store.RotateAccountTokens(token, result.AccessToken, result.RefreshToken, result.IDToken, result.Fields)
-	if updateErr != nil {
-		s.recordRefreshError(progressID, ref, updateErr)
-		return
-	}
-	if updated == nil {
-		s.recordRefreshError(progressID, ref, errors.New("account update returned empty result"))
 		return
 	}
 	s.recordRefreshSuccess(progressID)

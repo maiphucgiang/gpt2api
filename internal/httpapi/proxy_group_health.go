@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 const (

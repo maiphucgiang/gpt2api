@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/config"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/config"
 )
 
 func adminTestConfig(root string) config.Config {
@@ -25,8 +25,7 @@ func adminTestConfig(root string) config.Config {
 		ConfigPath: filepath.Join(root, "config.json"), AccountsPath: filepath.Join(root, "data", "accounts.json"),
 		AuthKeysPath: filepath.Join(root, "data", "auth_keys.json"), APIKey: "api-secret", AdminKey: "admin-secret", Version: "test",
 		ImageDataDir: filepath.Join(root, "data", "files", "images"), VideoDataDir: filepath.Join(root, "data", "files", "videos"),
-		OAuthPath: filepath.Join(root, "data", "oauth.json.enc"), QueuePath: filepath.Join(root, "data", "tasks.json"),
-		RegisterPath: filepath.Join(root, "data", "register.json"), GrokAccountsPath: filepath.Join(root, "data", "grok_accounts.json"),
+		RegisterPath: filepath.Join(root, "data", "register.json"),
 	}
 }
 
@@ -187,10 +186,10 @@ func TestMonitorSnapshotWithHistorySummary(t *testing.T) {
 
 func TestDashboardAccountAndLogSummary(t *testing.T) {
 	accountStats := dashboardAccountStats([]map[string]any{
-		{"access_token": "header.payload.signature", "status": "正常", "enabled": true, "quota": 25, "type": "plus", "success": 3},
-		{"access_token": "second.jwt.token", "status": "限流", "enabled": true, "quota": 10, "type": "free", "fail": 1},
-		{"access_token": "grok-disabled", "status": "禁用", "enabled": false, "source_type": "grok"},
-		{"access_token": "grok-abnormal", "status": "异常", "enabled": true, "source_type": "grok", "invalid_count": 1},
+		{"access_token": "header.payload.signature", "source_type": "chatgpt_web", "status": "正常", "enabled": true, "quota": 25, "type": "plus", "success": 3},
+		{"access_token": "second.jwt.token", "source_type": "chatgpt_web", "status": "限流", "enabled": true, "quota": 10, "type": "free", "fail": 1},
+		{"access_token": "gpt-disabled", "status": "禁用", "enabled": false, "source_type": "chatgpt_web"},
+		{"access_token": "gpt-abnormal", "status": "异常", "enabled": true, "source_type": "chatgpt_web", "invalid_count": 1},
 	})
 	if intValue(accountStats["total"]) != 4 || intValue(accountStats["active"]) != 1 || intValue(accountStats["limited"]) != 1 {
 		t.Fatalf("unexpected account totals: %#v", accountStats)
@@ -199,7 +198,7 @@ func TestDashboardAccountAndLogSummary(t *testing.T) {
 		t.Fatalf("unexpected account categories: %#v", accountStats)
 	}
 	providers := mapValue(accountStats["providers"])
-	if intValue(mapValue(providers["gpt"])["total"]) != 2 || intValue(mapValue(providers["grok"])["total"]) != 2 {
+	if intValue(mapValue(providers["gpt"])["total"]) != 4 || len(providers) != 1 {
 		t.Fatalf("unexpected provider totals: %#v", providers)
 	}
 
@@ -418,13 +417,6 @@ func TestAdminImagesTagsAndBackup(t *testing.T) {
 func TestRegistrationManagementEndpoints(t *testing.T) {
 	root := t.TempDir()
 	cfg := adminTestConfig(root)
-	if err := os.MkdirAll(filepath.Dir(cfg.GrokAccountsPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	account := `[{"id":"grok-one","email":"alice@example.com","password":"secret","sso":"sso-token","status":"active","source_type":"protocol"}]`
-	if err := os.WriteFile(cfg.GrokAccountsPath, []byte(account), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	handler := New(cfg).Handler()
 
 	unauthorized := httptest.NewRecorder()
@@ -444,30 +436,6 @@ func TestRegistrationManagementEndpoints(t *testing.T) {
 	runtimeResponse := adminRequest(handler, http.MethodGet, "/api/register/runtime", nil)
 	if runtimeResponse.Code != http.StatusOK || !strings.Contains(runtimeResponse.Body.String(), `"ready":false`) {
 		t.Fatalf("unexpected registration runtime status: %d %s", runtimeResponse.Code, runtimeResponse.Body.String())
-	}
-	listResponse := adminRequest(handler, http.MethodGet, "/api/register/grok/accounts?page_size=10", nil)
-	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "al***e@example.com") {
-		t.Fatalf("register list failed: %d %s", listResponse.Code, listResponse.Body.String())
-	}
-	if strings.Contains(listResponse.Body.String(), "sso-token") || strings.Contains(listResponse.Body.String(), `"password":"secret"`) {
-		t.Fatalf("register list leaked credentials: %s", listResponse.Body.String())
-	}
-
-	authorizeResponse := adminRequest(handler, http.MethodPost, "/api/register/grok/accounts/oauth/authorize", strings.NewReader(`{"ids":["grok-one"]}`))
-	if authorizeResponse.Code != http.StatusOK || !strings.Contains(authorizeResponse.Body.String(), `"status":"queued"`) {
-		t.Fatalf("OAuth authorization was not queued: %d %s", authorizeResponse.Code, authorizeResponse.Body.String())
-	}
-	credentialsResponse := adminRequest(handler, http.MethodGet, "/api/register/grok/accounts/grok-one/credentials", nil)
-	if credentialsResponse.Code != http.StatusOK || !strings.Contains(credentialsResponse.Body.String(), "secret") {
-		t.Fatalf("credentials endpoint failed: %d %s", credentialsResponse.Code, credentialsResponse.Body.String())
-	}
-	ssoResponse := adminRequest(handler, http.MethodGet, "/api/register/grok/accounts/export-sso", nil)
-	if ssoResponse.Code != http.StatusOK || !strings.Contains(ssoResponse.Body.String(), "sso-token") {
-		t.Fatalf("SSO export failed: %d %s", ssoResponse.Code, ssoResponse.Body.String())
-	}
-	disableResponse := adminRequest(handler, http.MethodPost, "/api/register/grok/accounts/runtime/disabled", strings.NewReader(`{"ids":["grok-one"],"disabled":true}`))
-	if disableResponse.Code != http.StatusOK || !strings.Contains(disableResponse.Body.String(), `"ok":1`) {
-		t.Fatalf("disable endpoint failed: %d %s", disableResponse.Code, disableResponse.Body.String())
 	}
 }
 

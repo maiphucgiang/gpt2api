@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
 const (
@@ -227,7 +227,6 @@ func (c *OpenAIAccountClient) getJSON(ctx context.Context, method, path, token s
 		rawBody = raw
 	}
 	// ChatGPT's target headers contain the route path, not its query string.
-	// The Python client follows the same convention for the account endpoint.
 	targetPath := path
 	if parsed, parseErr := url.Parse(path); parseErr == nil && parsed.Path != "" {
 		targetPath = parsed.Path
@@ -566,8 +565,7 @@ type openAIFingerprint struct {
 }
 
 func buildOpenAIFingerprint(account map[string]any) openAIFingerprint {
-	// Keep the defaults aligned with the Python curl_cffi client. An imported
-	// account may carry a more precise browser fingerprint under fp.
+	// Imported accounts may provide a more precise browser fingerprint under fp.
 	fingerprint := openAIFingerprint{
 		UserAgent:              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
 		DeviceID:               firstUUID(),

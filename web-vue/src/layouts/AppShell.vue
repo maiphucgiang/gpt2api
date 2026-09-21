@@ -18,8 +18,8 @@
           :class="isSidebarRail ? 'justify-center px-2' : 'justify-between px-6'"
         >
           <div class="flex w-full items-center" :class="isSidebarRail ? 'justify-center' : ''">
-            <p v-if="!isSidebarRail" class="ui-section-title">GPTGrok2API</p>
-            <span v-else class="text-sm font-semibold text-foreground" aria-label="GPTGrok2API">GG</span>
+            <p v-if="!isSidebarRail" class="ui-section-title">gpt2api</p>
+            <span v-else class="text-sm font-semibold text-foreground" aria-label="gpt2api">GPT</span>
           </div>
         </div>
 

@@ -7,10 +7,15 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: gptgrok2api
+  IMAGE_NAME: gpt2api
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+
   docker:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read

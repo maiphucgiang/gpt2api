@@ -1,6 +1,6 @@
 import { watch, type Ref } from 'vue'
 
-import { usePageDebouncedAction } from '@/composables/usePageQuery'
+import { usePageDebouncedAction, useSerialVisibilityPolling } from '@/composables/usePageQuery'
 import type { PageRuntime } from '@/composables/usePageRuntime'
 import {
   getNumberPreference,
@@ -33,6 +33,16 @@ type AccountPageLifecycleRuntimeOptions = {
 
 export function useAccountPageLifecycleRuntime(options: AccountPageLifecycleRuntimeOptions) {
   let ready = false
+  const polling = useSerialVisibilityPolling({
+    runtime: options.runtime,
+    key: `${options.reloadTimerKey}:poll`,
+    intervalMs: 10_000,
+    action: async () => {
+      if (ready && !options.shouldSkipRefresh()) {
+        await options.loadData({ silentErrorToast: true })
+      }
+    },
+  })
   const listReloadDebounce = usePageDebouncedAction({
     runtime: options.runtime,
     key: options.reloadTimerKey,
@@ -67,6 +77,7 @@ export function useAccountPageLifecycleRuntime(options: AccountPageLifecycleRunt
   }
 
   function invalidate() {
+    polling.stop()
     options.invalidateData()
     options.invalidateGroups()
     clearListReloadTimer()
@@ -111,9 +122,11 @@ export function useAccountPageLifecycleRuntime(options: AccountPageLifecycleRunt
         applyPreferences()
         await refresh(true)
         ready = true
+        polling.start()
       })()
       return
     }
+    polling.start()
     if (options.shouldSkipRefresh()) return
     void refresh(true)
   })
@@ -128,6 +141,7 @@ export function useAccountPageLifecycleRuntime(options: AccountPageLifecycleRunt
 
   options.runtime.onShow(() => {
     if (!ready) return
+    polling.start()
     if (options.shouldSkipRefresh()) return
     void refresh(true)
   })

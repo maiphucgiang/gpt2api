@@ -2,8 +2,6 @@ import { parseProxyReference, serializeProxyReference } from '@/api/proxy'
 import type { ProxyGroup } from '@/api/proxy'
 import type {
   GptMailStatus,
-  GrokRegisterConfig,
-  GrokTurnstileProvider,
   LegacyRegisterConfig,
   RegisterProvider,
   RegisterTarget,
@@ -69,24 +67,7 @@ export const registerModeGroups = [{ options: registerModeOptions }]
 
 export const registerTargetOptions = [
   { value: 'openai', label: 'OpenAI' },
-  { value: 'grok', label: 'Grok（协议）' },
 ] as const
-
-export const turnstileProviderOptions = [
-  { value: 'yescaptcha', label: 'YesCaptcha' },
-  { value: '2captcha', label: '2Captcha' },
-  { value: 'local', label: '本地 Captcha Solver' },
-  { value: 'custom', label: '自定义' },
-] as const
-
-export const turnstileProviderGroups = [{ options: turnstileProviderOptions }]
-
-export const grokSignupFlowGroups = [{
-  options: [
-    { value: 'xconsole', label: '参考链路（推荐）' },
-    { value: 'legacy', label: '原注册链路' },
-  ],
-}]
 
 export const registerProxyModeOptions = [
   { value: 'global', label: '使用默认代理' },
@@ -145,47 +126,8 @@ export const providerLocalOnlyKeys: Record<string, string[]> = {
   mailcom_mother: ['accounts_count', 'accounts_preview'],
 }
 
-export const defaultGrokRegisterConfig: GrokRegisterConfig = {
-  signup_flow: 'xconsole',
-  browser_flow_enabled: true,
-  provider: 'yescaptcha',
-  api_key: '',
-  api_base: '',
-  request_timeout: 30,
-  captcha_timeout: 180,
-  captcha_poll_interval: 3,
-  local_concurrency: 2,
-  create_path: '/createTask',
-  result_path: '/getTaskResult',
-  max_mail_retries: 3,
-  xai_cli_oauth_enabled: true,
-  xai_cli_oauth_flow: 'device',
-  xai_cli_pkce_reference_dir: '',
-  oauth_delivery: {
-    sub2api: {
-      enabled: false,
-      server_id: '',
-      group_mode: 'existing',
-      group_id: '',
-      group_name: '',
-    },
-    cpa: {
-      enabled: false,
-      pool_id: '',
-    },
-  },
-  grok2api_enabled: true,
-  grok2api_api_base: '',
-  grok2api_admin_key: '',
-  grok2api_pool: 'auto',
-  grok2api_auto_nsfw: false,
-  grok2api_verify_on_import: true,
-  grok2api_timeout: 30,
-}
-
 export const defaultRegisterConfig: LegacyRegisterConfig = {
   target: 'openai',
-  grok: { ...defaultGrokRegisterConfig },
   checkout: {
     enabled: true,
     channel: 'upi',
@@ -244,98 +186,24 @@ export const defaultRegisterConfig: LegacyRegisterConfig = {
     current_available: 0,
   },
   logs: [],
-  grok_oauth_logs: [],
 }
 
 export function providerType(provider: RegisterProvider) {
   return String(provider.type || 'cloudmail_gen')
 }
 
-export function normalizeRegisterTarget(value: unknown): RegisterTarget {
-  return String(value || '').trim().toLowerCase() === 'grok' ? 'grok' : 'openai'
-}
-
-export function normalizeTurnstileProvider(value: unknown): GrokTurnstileProvider {
-  const provider = String(value || '').trim().toLowerCase()
-  return ['yescaptcha', '2captcha', 'local', 'custom'].includes(provider)
-    ? provider as GrokTurnstileProvider
-    : 'yescaptcha'
-}
-
-export function normalizeGrokRegisterConfig(value: unknown): GrokRegisterConfig {
-  const input = value && typeof value === 'object' ? value as Partial<GrokRegisterConfig> : {}
-  const deliveryInput = input.oauth_delivery && typeof input.oauth_delivery === 'object'
-    ? input.oauth_delivery
-    : defaultGrokRegisterConfig.oauth_delivery
-  const deliverySub2APIInput = deliveryInput.sub2api && typeof deliveryInput.sub2api === 'object'
-    ? deliveryInput.sub2api
-    : defaultGrokRegisterConfig.oauth_delivery.sub2api
-  const deliverySub2APIMode = deliverySub2APIInput.group_mode === 'custom' ? 'custom' : 'existing'
-  const deliveryCPAInput = deliveryInput.cpa && typeof deliveryInput.cpa === 'object'
-    ? deliveryInput.cpa
-    : defaultGrokRegisterConfig.oauth_delivery.cpa
-  return {
-    ...defaultGrokRegisterConfig,
-    ...input,
-    signup_flow: input.signup_flow === 'legacy' ? 'legacy' : 'xconsole',
-    browser_flow_enabled: true,
-    provider: normalizeTurnstileProvider(input.provider),
-    api_key: String(input.api_key || '').trim(),
-    api_base: String(input.api_base || '').trim(),
-    request_timeout: Math.max(1, Number(input.request_timeout) || defaultGrokRegisterConfig.request_timeout),
-    captcha_timeout: Math.max(1, Number(input.captcha_timeout) || defaultGrokRegisterConfig.captcha_timeout),
-    captcha_poll_interval: Math.max(1, Math.min(60, Math.round(Number(input.captcha_poll_interval) || defaultGrokRegisterConfig.captcha_poll_interval))),
-    local_concurrency: Math.max(0, Math.min(64, Math.round(
-      Number.isFinite(Number(input.local_concurrency))
-        ? Number(input.local_concurrency)
-        : defaultGrokRegisterConfig.local_concurrency,
-    ))),
-    create_path: String(input.create_path || defaultGrokRegisterConfig.create_path).trim(),
-    result_path: String(input.result_path || defaultGrokRegisterConfig.result_path).trim(),
-    max_mail_retries: Math.max(1, Math.min(20, Number(input.max_mail_retries) || defaultGrokRegisterConfig.max_mail_retries)),
-    xai_cli_oauth_enabled: input.xai_cli_oauth_enabled !== false,
-    xai_cli_oauth_flow: input.xai_cli_oauth_flow === 'pkce_reference' ? 'pkce_reference' : 'device',
-    xai_cli_pkce_reference_dir: String(input.xai_cli_pkce_reference_dir || '').trim(),
-    oauth_delivery: {
-      sub2api: {
-        enabled: Boolean(deliverySub2APIInput.enabled),
-        server_id: String(deliverySub2APIInput.server_id || '').trim(),
-        group_mode: deliverySub2APIMode,
-        group_id: deliverySub2APIMode === 'existing' ? String(deliverySub2APIInput.group_id || '').trim() : '',
-        group_name: deliverySub2APIMode === 'custom' ? String(deliverySub2APIInput.group_name || '').trim() : '',
-      },
-      cpa: {
-        enabled: Boolean(deliveryCPAInput.enabled),
-        pool_id: String(deliveryCPAInput.pool_id || '').trim(),
-      },
-    },
-    grok2api_enabled: true,
-    grok2api_api_base: '',
-    grok2api_admin_key: '',
-    grok2api_pool: ['auto', 'basic', 'super', 'heavy'].includes(String(input.grok2api_pool || '').trim().toLowerCase())
-      ? String(input.grok2api_pool).trim().toLowerCase()
-      : defaultGrokRegisterConfig.grok2api_pool,
-    grok2api_auto_nsfw: Boolean(input.grok2api_auto_nsfw),
-    grok2api_verify_on_import: input.grok2api_verify_on_import !== false,
-    grok2api_timeout: Math.max(3, Math.min(120, Number(input.grok2api_timeout) || defaultGrokRegisterConfig.grok2api_timeout)),
-  }
+export function normalizeRegisterTarget(_value: unknown): RegisterTarget {
+  return 'openai'
 }
 
 export function providerForRegisterTarget(provider: RegisterProvider, target: RegisterTarget): RegisterProvider {
   if (!['icloud_api', 'icloud_local'].includes(providerType(provider))) return provider
   return {
     ...provider,
-    project: target === 'grok' ? 'grok' : 'openai',
+    project: target,
     purpose: 'register',
-    keyword: target === 'grok' ? 'xAI' : 'OpenAI',
+    keyword: 'OpenAI',
   }
-}
-
-export function turnstileApiBasePlaceholder(provider: unknown) {
-  if (normalizeTurnstileProvider(provider) === 'yescaptcha') return 'https://api.yescaptcha.com'
-  if (normalizeTurnstileProvider(provider) === '2captcha') return 'https://api.2captcha.com'
-  if (normalizeTurnstileProvider(provider) === 'local') return 'http://127.0.0.1:8877'
-  return 'https://solver.example.com'
 }
 
 export function createProviderId(type = 'provider') {
@@ -549,8 +417,7 @@ export function normalizeRegisterConfig(raw: LegacyRegisterConfig): LegacyRegist
     ...defaultRegisterConfig,
     ...raw,
     target,
-    grok: normalizeGrokRegisterConfig(raw.grok),
-    mode: target === 'grok' ? 'total' : (raw.mode || defaultRegisterConfig.mode),
+    mode: raw.mode || defaultRegisterConfig.mode,
     mail,
     checkout,
     sub2api_sync: sub2apiSync,
@@ -558,7 +425,6 @@ export function normalizeRegisterConfig(raw: LegacyRegisterConfig): LegacyRegist
     agent_identity_archive: agentIdentityArchive,
     stats: { ...defaultRegisterConfig.stats, ...(raw.stats || {}) },
     logs: Array.isArray(raw.logs) ? raw.logs : [],
-    grok_oauth_logs: Array.isArray(raw.grok_oauth_logs) ? raw.grok_oauth_logs : [],
   }
 }
 
@@ -713,12 +579,10 @@ export function sanitizedProviderPayload(provider: RegisterProvider): RegisterPr
 
 export function legacyRegisterPayload(config: LegacyRegisterConfig): Partial<LegacyRegisterConfig> {
   const target = normalizeRegisterTarget(config.target)
-  const grok = normalizeGrokRegisterConfig(config.grok)
   const sub2apiSyncMode = config.sub2api_sync?.group_mode === 'custom' ? 'custom' : 'existing'
   const checkoutChannel = config.checkout?.channel === 'pix' ? 'pix' : 'upi'
   return {
     target,
-    grok,
     checkout: {
       enabled: Boolean(config.checkout?.enabled),
       channel: checkoutChannel,
@@ -760,32 +624,11 @@ export function legacyRegisterPayload(config: LegacyRegisterConfig): Partial<Leg
     proxy: String(config.proxy || '').trim(),
     total: Math.max(1, Number(config.total) || 1),
     threads: Math.max(1, Number(config.threads) || 1),
-    mode: target === 'grok' ? 'total' : (config.mode || 'total') as RegisterMode,
+    mode: (config.mode || 'total') as RegisterMode,
     target_quota: Math.max(1, Number(config.target_quota) || 1),
     target_available: Math.max(1, Number(config.target_available) || 1),
     check_interval: Math.max(1, Number(config.check_interval) || 5),
   }
-}
-
-export function grokRequirementMessages(config: LegacyRegisterConfig | null | undefined) {
-  if (!config || normalizeRegisterTarget(config.target) !== 'grok') return []
-  const grok = normalizeGrokRegisterConfig(config.grok)
-  const missing: string[] = []
-  if (grok.provider !== 'local' && !isFilled(grok.api_key)) missing.push('Turnstile API Key')
-  if (grok.provider === 'custom' && !isFilled(grok.api_base)) missing.push('Turnstile API Base')
-  const sub2api = grok.oauth_delivery.sub2api
-  if (sub2api.enabled) {
-    if (!isFilled(sub2api.server_id)) missing.push('OAuth 投递 Sub2API 连接')
-    if (sub2api.group_mode === 'custom') {
-      if (!isFilled(sub2api.group_name)) missing.push('OAuth 投递 Sub2API 自定义分组')
-    } else if (!isFilled(sub2api.group_id)) {
-      missing.push('OAuth 投递 Sub2API 分组')
-    }
-  }
-  if (grok.oauth_delivery.cpa.enabled && !isFilled(grok.oauth_delivery.cpa.pool_id)) {
-    missing.push('OAuth 投递 CPA 连接')
-  }
-  return missing
 }
 
 export function sub2apiSyncRequirementMessages(config: LegacyRegisterConfig | null | undefined) {
@@ -1137,17 +980,16 @@ export function arrayText(value: unknown) {
 export function registerMetricItems(
   stats: NonNullable<LegacyRegisterConfig['stats']>,
   threads = 0,
-  target: RegisterTarget = 'openai',
+  _target: RegisterTarget = 'openai',
 ): RegisterMetricItem[] {
   const common = [
-    { key: 'success', label: target === 'grok' ? 'Grok 账号' : '成功', value: stats.success || 0, meta: `成功率 ${stats.success_rate || 0}%` },
+    { key: 'success', label: '成功', value: stats.success || 0, meta: `成功率 ${stats.success_rate || 0}%` },
     { key: 'fail', label: '失败', value: stats.fail || 0 },
     { key: 'done', label: '完成', value: stats.done || 0 },
     { key: 'running', label: '运行 / 线程', value: `${stats.running || 0} / ${stats.threads || threads || 0}` },
     { key: 'elapsed', label: '运行时间', value: `${stats.elapsed_seconds || 0}s` },
     { key: 'avg', label: '平均耗时', value: `${stats.avg_seconds || 0}s` },
   ]
-  if (target === 'grok') return common
   return [
     ...common,
     { key: 'quota', label: '当前额度', value: stats.current_quota || 0 },

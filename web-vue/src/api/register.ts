@@ -96,44 +96,7 @@ export type RegisterProvider = {
   [key: string]: unknown
 }
 
-export type RegisterTarget = 'openai' | 'grok'
-
-export type GrokTurnstileProvider = 'yescaptcha' | '2captcha' | 'local' | 'custom'
-
-export type GrokOAuthDeliveryConfig = {
-  sub2api: OpenAISub2APISyncConfig
-  cpa: {
-    enabled: boolean
-    pool_id: string
-  }
-}
-
-export type GrokRegisterConfig = {
-  signup_flow: 'xconsole' | 'legacy' | string
-  browser_flow_enabled: boolean
-  provider: GrokTurnstileProvider | string
-  api_key: string
-  api_base: string
-  request_timeout: number
-  captcha_timeout: number
-  captcha_poll_interval: number
-  local_concurrency: number
-  create_path: string
-  result_path: string
-  max_mail_retries: number
-  xai_cli_oauth_enabled: boolean
-  xai_cli_oauth_flow: 'device' | 'pkce_reference'
-  xai_cli_pkce_reference_dir: string
-  oauth_delivery: GrokOAuthDeliveryConfig
-  grok2api_enabled: boolean
-  grok2api_api_base: string
-  grok2api_admin_key: string
-  grok2api_pool: 'auto' | 'basic' | 'super' | 'heavy' | string
-  grok2api_auto_nsfw: boolean
-  grok2api_verify_on_import: boolean
-  grok2api_timeout: number
-  [key: string]: unknown
-}
+export type RegisterTarget = 'openai'
 
 export type OpenAICheckoutConfig = {
   enabled: boolean
@@ -200,7 +163,6 @@ export type CheckoutTask = {
 
 export type LegacyRegisterConfig = {
   target: RegisterTarget | string
-  grok: GrokRegisterConfig
   checkout: OpenAICheckoutConfig
   sub2api_sync: OpenAISub2APISyncConfig
   cpa_sync: OpenAICPASyncConfig
@@ -237,11 +199,6 @@ export type LegacyRegisterConfig = {
     [key: string]: unknown
   }
   logs?: Array<{
-    time: string
-    text: string
-    level?: string
-  }>
-  grok_oauth_logs?: Array<{
     time: string
     text: string
     level?: string
@@ -312,11 +269,5 @@ export const registerApi = {
   },
   refreshGptMailKey(provider: RegisterProvider, force = true) {
     return apiClient.post<any, { status: GptMailStatus }>('/api/register/gptmail/refresh-key', { provider, force })
-  },
-  exportGrokAccounts(format: 'cpa' | 'sub2api' = 'sub2api') {
-    return apiClient.get<never, Blob>('/api/register/grok/accounts/export', {
-      params: { format },
-      responseType: 'blob',
-    })
   },
 }

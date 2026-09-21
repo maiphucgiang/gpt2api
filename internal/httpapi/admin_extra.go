@@ -19,15 +19,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/model"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
-	"github.com/auucoder/gptgrok2api-go/internal/provider"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/model"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
+	"github.com/maiphucgiang/gpt2api/internal/provider"
 )
 
-// The Python service stores these resources as small JSON documents. Keep the
-// Go implementation deliberately file based so the endpoints remain useful
-// in the same volume layout and do not need an additional database.
+// JSON resources share the persistent application volume.
 
 type imageTaskState struct {
 	ID         string           `json:"id"`
@@ -100,7 +98,7 @@ func (s *Server) modelCatalog(w http.ResponseWriter, r *http.Request) {
 		"object": "model_catalog", "chat_models": chat, "image_models": images,
 		"image_edit_models": images, "video_models": videos, "models": []any{},
 		"all_models":             append(append(append([]string{}, chat...), images...), videos...),
-		"source":                 map[string]string{"chat": "go", "image": "go", "grok": "unavailable"},
+		"source":                 map[string]string{"chat": "go", "image": "go"},
 		"openai_models_endpoint": "/v1/models",
 	})
 }
@@ -150,7 +148,7 @@ func (s *Server) logsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		filtered = append(filtered, item)
 	}
-	// The Python endpoint returns newest entries first.
+	// Return newest entries first.
 	sort.SliceStable(filtered, func(i, j int) bool { return fmt.Sprint(filtered[i]["time"]) > fmt.Sprint(filtered[j]["time"]) })
 	total := len(filtered)
 	if offset > total {
@@ -687,7 +685,7 @@ func (s *Server) imageTaskEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	modelName := strings.TrimSpace(r.FormValue("model"))
 	if modelName == "" {
-		modelName = "grok-imagine-image-edit"
+		modelName = "gpt-image-2"
 	}
 	files := r.MultipartForm.File["image[]"]
 	if len(files) == 0 {
@@ -1272,11 +1270,7 @@ func (s *Server) searchAPI(w http.ResponseWriter, r *http.Request) {
 		route = model.ChatRoute{Mode: "normal", PoolCandidates: []string{"basic", "super", "heavy"}}
 	}
 	recorder := &responseCapture{header: make(http.Header)}
-	if route.Console {
-		s.completeConsoleChat(recorder, r, request)
-	} else {
-		s.completeChat(recorder, r, request, route)
-	}
+	s.completeChat(recorder, r, request, route)
 	if recorder.status >= 400 {
 		w.WriteHeader(recorder.status)
 		_, _ = w.Write(recorder.body.Bytes())

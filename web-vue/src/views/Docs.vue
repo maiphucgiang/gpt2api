@@ -4,7 +4,7 @@
       <PanelHeader title="文档中心">
         <template #copy>
           <p class="mt-1 text-xs text-muted-foreground">
-            当前页面只展示 GPTGrok2API 控制台相关接口、运维边界和风险说明。
+            当前页面展示 gpt2api 控制台接口、运维边界和风险说明。
           </p>
         </template>
       </PanelHeader>

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	projectRepositoryURL = "https://github.com/lichao199208/gptGrok2api"
-	projectVersionURL    = "https://raw.githubusercontent.com/lichao199208/gptGrok2api/main/VERSION"
-	projectChangelogURL  = "https://raw.githubusercontent.com/lichao199208/gptGrok2api/main/CHANGELOG.md"
+	projectRepositoryURL = "https://github.com/maiphucgiang/gpt2api"
+	projectVersionURL    = "https://raw.githubusercontent.com/maiphucgiang/gpt2api/main/VERSION"
+	projectChangelogURL  = "https://raw.githubusercontent.com/maiphucgiang/gpt2api/main/CHANGELOG.md"
 )
 
 func (s *Server) metaUpdate(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +71,7 @@ func fetchProjectText(ctx context.Context, client *http.Client, endpoint string,
 		return "", err
 	}
 	request.Header.Set("Accept", "text/plain, text/markdown, */*")
-	request.Header.Set("User-Agent", "gptgrok2api-go-version-check")
+	request.Header.Set("User-Agent", "gpt2api-version-check")
 	response, err := client.Do(request)
 	if err != nil {
 		return "", err

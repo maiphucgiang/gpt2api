@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/model"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
+	"github.com/maiphucgiang/gpt2api/internal/model"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
 )
 
 func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,7 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec, ok := model.Find(s.catalog, request.Model)
-	if !ok || spec.Capability&model.Chat == 0 && spec.Capability&model.ConsoleChat == 0 {
+	if !ok || spec.Capability&model.Chat == 0 {
 		writeError(w, http.StatusNotFound, "model not found", "invalid_request_error")
 		return
 	}
@@ -60,10 +60,6 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.Stream {
 		chat.Stream = true
-	}
-	if spec.Capability&model.ConsoleChat != 0 {
-		s.consoleChatCompletions(w, r, chat)
-		return
 	}
 	if request.Stream {
 		recorder := &responseCapture{header: make(http.Header)}

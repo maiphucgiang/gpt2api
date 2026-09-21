@@ -1,5 +1,5 @@
-#!/bin/bash
-docker restart chatgpt2api-warp
-sleep 18
-docker ps --filter name=chatgpt2api-warp --format '{{.Names}} {{.Status}}'
-docker exec chatgpt2api-warp sh -c 'grep -c "DIAG invalid_auth_step" /app/services/register/openai_register.py'
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+docker compose -f docker-compose.yml -f docker-compose.warp.yml restart app
+docker compose -f docker-compose.yml -f docker-compose.warp.yml ps

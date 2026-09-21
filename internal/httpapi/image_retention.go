@@ -11,6 +11,7 @@ import (
 // growing without bound. A file is only eligible after the full retention
 // period has elapsed, so newly generated files are never removed mid-request.
 func (s *Server) imageRetentionScheduler() {
+	defer s.backgroundWorkers.Done()
 	cleanup := func() {
 		removed, bytes := s.cleanupExpiredImages()
 		if removed > 0 {
@@ -24,8 +25,13 @@ func (s *Server) imageRetentionScheduler() {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
-		cleanup()
+	for {
+		select {
+		case <-s.backgroundContext.Done():
+			return
+		case <-ticker.C:
+			cleanup()
+		}
 	}
 }
 

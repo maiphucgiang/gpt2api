@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gpt2api.app</string>
+  <key>ProgramArguments</key>
+  <array><string>__APP_DIR__/bin/gpt2api</string></array>
+  <key>WorkingDirectory</key><string>__APP_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>GO_LISTEN_ADDR</key><string>127.0.0.1:8000</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ExitTimeOut</key><integer>120</integer>
+  <key>StandardOutPath</key><string>__APP_DIR__/logs/gpt2api.log</string>
+  <key>StandardErrorPath</key><string>__APP_DIR__/logs/gpt2api.error.log</string>
+</dict>
+</plist>

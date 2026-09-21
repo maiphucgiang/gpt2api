@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/accounts"
-	"github.com/auucoder/gptgrok2api-go/internal/model"
-	"github.com/auucoder/gptgrok2api-go/internal/protocol"
-	"github.com/auucoder/gptgrok2api-go/internal/provider"
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
+	"github.com/maiphucgiang/gpt2api/internal/model"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
+	"github.com/maiphucgiang/gpt2api/internal/provider"
 )
 
 func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
@@ -43,6 +43,7 @@ func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, requ
 			}
 			break
 		}
+		s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
 		lastErr = nil
 		break
 	}
@@ -198,7 +199,6 @@ func (s *Server) completeOpenAIImageChat(w http.ResponseWriter, r *http.Request,
 			}
 			break
 		}
-		s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
 		lastErr = nil
 		break
 	}

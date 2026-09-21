@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/auucoder/gptgrok2api-go/internal/config"
+	"github.com/maiphucgiang/gpt2api/internal/config"
 )
 
 type updateRoundTripFunc func(*http.Request) (*http.Response, error)

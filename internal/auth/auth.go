@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/auucoder/gptgrok2api-go/internal/store"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 type Validator struct {

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/auucoder/gptgrok2api-go/internal/config"
-	proxyruntime "github.com/auucoder/gptgrok2api-go/internal/proxy"
-	"github.com/auucoder/gptgrok2api-go/internal/store"
+	"github.com/maiphucgiang/gpt2api/internal/config"
+	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 func testConfig() config.Config {

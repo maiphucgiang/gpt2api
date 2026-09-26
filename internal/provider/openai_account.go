@@ -100,61 +100,53 @@ type flareSolverrResponse struct {
 }
 
 func (c *OpenAIAccountClient) RefreshAccount(ctx context.Context, account map[string]any) (AccountRefreshResult, error) {
-	accessToken := aiString(account, "access_token", "accessToken", "token")
-	if accessToken == "" {
-		return AccountRefreshResult{}, errors.New("access_token is required")
-	}
-	activeToken := accessToken
-	rotated := AccountRefreshResult{AccessToken: accessToken}
-
-	// Browser sessions are not Platform OAuth credentials. They can still be
-	// retried after a 401, but must not be proactively sent to oauth.openai.com.
-	if !strings.EqualFold(aiString(account, "source_type"), "chatgpt_web") && aiString(account, "refresh_token") != "" && tokenNeedsRefresh(activeToken) {
-		if tokens, err := c.refreshOAuth(ctx, aiString(account, "refresh_token"), account); err == nil {
-			activeToken = tokens.AccessToken
-			rotated.AccessToken = tokens.AccessToken
-			rotated.RefreshToken = tokens.RefreshToken
-			rotated.IDToken = tokens.IDToken
-		}
-	}
-
-	fields, err := c.fetchUserInfo(ctx, activeToken, account)
-	if errors.Is(err, ErrInvalidAccessToken) && aiString(account, "refresh_token") != "" {
-		tokens, refreshErr := c.refreshOAuth(ctx, aiString(account, "refresh_token"), account)
-		if refreshErr != nil {
-			return AccountRefreshResult{}, fmt.Errorf("access token invalid and oauth refresh failed: %w", refreshErr)
-		}
-		activeToken = tokens.AccessToken
-		rotated.AccessToken = tokens.AccessToken
-		rotated.RefreshToken = tokens.RefreshToken
-		rotated.IDToken = tokens.IDToken
-		fields, err = c.fetchUserInfo(ctx, activeToken, account)
-	}
-	if err != nil {
-		return AccountRefreshResult{}, err
-	}
-	rotated.Fields = fields
-	return rotated, nil
+	return c.RefreshWithCheckpoint(ctx, account, false, nil)
 }
 
-// RefreshAccessToken rotates an account's OAuth credential set immediately,
-// then verifies the new access token against ChatGPT. It is used by the admin
-// bulk AT action instead of waiting for the old JWT to fail a normal request.
 func (c *OpenAIAccountClient) RefreshAccessToken(ctx context.Context, account map[string]any) (AccountRefreshResult, error) {
-	refreshToken := aiString(account, "refresh_token")
-	if refreshToken == "" {
-		return AccountRefreshResult{}, errors.New("账号缺少 refresh_token，需先完成一次 GPT 协议登录")
+	return c.RefreshWithCheckpoint(ctx, account, true, nil)
+}
+
+// RefreshWithCheckpoint saves an OAuth result before requesting account metadata.
+func (c *OpenAIAccountClient) RefreshWithCheckpoint(ctx context.Context, account map[string]any, force bool, checkpoint func(AccountRefreshResult) error) (AccountRefreshResult, error) {
+	access := aiString(account, "access_token", "accessToken", "token")
+	refresh := aiString(account, "refresh_token")
+	result := AccountRefreshResult{AccessToken: access}
+	if access == "" {
+		return result, errors.New("access_token is required")
 	}
-	rotated, err := c.refreshOAuth(ctx, refreshToken, account)
-	if err != nil {
-		return AccountRefreshResult{}, err
+	if force && refresh == "" {
+		return result, errors.New("账号缺少 refresh_token，需先完成一次 GPT 协议登录")
 	}
-	fields, err := c.fetchUserInfo(ctx, rotated.AccessToken, account)
-	if err != nil {
-		return AccountRefreshResult{}, fmt.Errorf("新 access token 验证失败: %w", err)
+	rotated := false
+	rotate := func() error {
+		tokens, err := c.refreshOAuth(ctx, refresh, account)
+		if err != nil {
+			return err
+		}
+		result = tokens
+		rotated = true
+		if checkpoint != nil {
+			if err := checkpoint(tokens); err != nil {
+				return fmt.Errorf("save refreshed credentials: %w", err)
+			}
+		}
+		return nil
 	}
-	rotated.Fields = fields
-	return rotated, nil
+	if force || (refresh != "" && !strings.EqualFold(aiString(account, "source_type"), "chatgpt_web") && tokenNeedsRefresh(access)) {
+		if err := rotate(); err != nil {
+			return result, err
+		}
+	}
+	fields, err := c.fetchUserInfo(ctx, result.AccessToken, account)
+	if errors.Is(err, ErrInvalidAccessToken) && !rotated && refresh != "" {
+		if err := rotate(); err != nil {
+			return result, err
+		}
+		fields, err = c.fetchUserInfo(ctx, result.AccessToken, account)
+	}
+	result.Fields = fields
+	return result, err
 }
 
 func (c *OpenAIAccountClient) fetchUserInfo(ctx context.Context, accessToken string, account map[string]any) (map[string]any, error) {

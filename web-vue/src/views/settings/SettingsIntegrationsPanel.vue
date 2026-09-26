@@ -53,7 +53,7 @@
               readonly
               placeholder="未设置，点击右侧生成"
             />
-            <Button variant="secondary" @click="generateApiKey">生成</Button>
+            <Button variant="outline" @click="generateApiKey">生成</Button>
           </div>
         </FormField>
         <FormField label="接口地址（POST）">

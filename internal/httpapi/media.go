@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
@@ -109,6 +110,7 @@ func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 	if isOpenAIImageModel(request.Model) {
 		data, err := s.generateOpenAIImageData(r, r.Context(), request.Prompt, request.Model, request.Size, request.Quality, nil, request.ResponseFormat, requestPublicBase(r), request.N)
 		if err != nil {
+			markImageSubmissionUncertain(w, err)
 			writeError(w, upstreamStatus(err), err.Error(), "upstream_error")
 			return
 		}
@@ -119,6 +121,7 @@ func (s *Server) imageGenerations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, prompt, model, size, quality string, inputs []provider.OpenAIImageInput, responseFormat, publicBase string, count int) ([]map[string]string, error) {
+	var submitted atomic.Bool
 	if count < 1 {
 		count = 1
 	}
@@ -167,11 +170,14 @@ func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, p
 				s.stageRequestMonitor(r, "image_getting_account", 35, map[string]any{"account_wait_ms": time.Since(accountStarted).Milliseconds()})
 
 				generated, generateErr := s.openAIImage.Generate(ctx, lease.Account, prompt, model, size, quality, inputs)
+				if generateErr == nil || provider.ImageSubmissionUncertain(generateErr) {
+					submitted.Store(true)
+				}
 				if generateErr != nil {
 					s.accountPool.Release(lease)
 					s.accountPool.Feedback(lease.Account, upstreamStatus(generateErr), generateErr)
 					excluded[lease.Account.Token] = true
-					if s.shouldRetry(upstreamStatus(generateErr), attempt) {
+					if !provider.ImageSubmissionUncertain(generateErr) && s.shouldRetry(upstreamStatus(generateErr), attempt) {
 						continue
 					}
 					sendErr(generateErr)
@@ -197,10 +203,6 @@ func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, p
 				if resolveErr != nil {
 					s.accountPool.Release(lease)
 					s.accountPool.Feedback(lease.Account, upstreamStatus(resolveErr), resolveErr)
-					excluded[lease.Account.Token] = true
-					if s.shouldRetry(upstreamStatus(resolveErr), attempt) {
-						continue
-					}
 					sendErr(resolveErr)
 					cancel()
 					return
@@ -216,6 +218,9 @@ func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, p
 	wg.Wait()
 	select {
 	case err := <-errCh:
+		if submitted.Load() && !provider.ImageSubmissionUncertain(err) {
+			err = &provider.ImageExecutionError{Stage: "result", Err: err}
+		}
 		return nil, err
 	default:
 	}
@@ -717,6 +722,7 @@ func (s *Server) imageEdits(w http.ResponseWriter, r *http.Request) {
 		format := imageEditResponseFormat(request.ResponseFormat)
 		data, err := s.generateOpenAIImageData(r, r.Context(), prompt, modelName, size, request.Quality, inputs, format, requestPublicBase(r), n)
 		if err != nil {
+			markImageSubmissionUncertain(w, err)
 			writeError(w, upstreamStatus(err), err.Error(), "upstream_error")
 			return
 		}

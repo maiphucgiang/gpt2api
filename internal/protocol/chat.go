@@ -25,16 +25,21 @@ type ChatRequest struct {
 }
 
 type ResponsesRequest struct {
-	Model           string           `json:"model"`
-	Input           any              `json:"input"`
-	Instructions    string           `json:"instructions"`
-	Stream          bool             `json:"stream"`
-	Reasoning       map[string]any   `json:"reasoning"`
-	Temperature     *float64         `json:"temperature"`
-	TopP            *float64         `json:"top_p"`
-	MaxOutputTokens *int             `json:"max_output_tokens"`
-	Tools           []map[string]any `json:"tools"`
-	ToolChoice      any              `json:"tool_choice"`
+	Model              string           `json:"model"`
+	Input              any              `json:"input"`
+	Instructions       string           `json:"instructions"`
+	Stream             bool             `json:"stream"`
+	Reasoning          map[string]any   `json:"reasoning"`
+	Temperature        *float64         `json:"temperature"`
+	TopP               *float64         `json:"top_p"`
+	MaxOutputTokens    *int             `json:"max_output_tokens"`
+	Tools              []map[string]any `json:"tools"`
+	ToolChoice         any              `json:"tool_choice"`
+	PreviousResponseID string           `json:"previous_response_id"`
+	Conversation       any              `json:"conversation"`
+	Background         bool             `json:"background"`
+	Store              *bool            `json:"store"`
+	Text               map[string]any   `json:"text"`
 }
 
 type UpstreamError struct {

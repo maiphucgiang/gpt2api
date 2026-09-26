@@ -7,6 +7,7 @@ import (
 
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/provider"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 type accountRefreshFlight struct {
@@ -62,14 +63,25 @@ func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rot
 		return nil, flight.err
 	}
 	client := s.openAIAccountClient()
-	var result provider.AccountRefreshResult
-	if rotate {
-		result, err = client.RefreshAccessToken(ctx, account)
-	} else {
-		result, err = client.RefreshAccount(ctx, account)
-	}
+	version := store.CredentialsOf(account)
+	var checkpointErr error
+	result, err := client.RefreshWithCheckpoint(ctx, account, rotate, func(tokens provider.AccountRefreshResult) error {
+		updated, err := s.store.SaveAccountCredentials(version, tokens.AccessToken, tokens.RefreshToken, tokens.IDToken)
+		if updated != nil {
+			account = updated
+			version = store.CredentialsOf(updated)
+			flight.rotate = true
+			flight.account = cloneMap(updated)
+		}
+		checkpointErr = err
+		return err
+	})
 	now := time.Now().UTC()
 	if err != nil {
+		if checkpointErr != nil {
+			flight.err = checkpointErr
+			return nil, flight.err
+		}
 		if ctx.Err() != nil {
 			flight.err = ctx.Err()
 			return nil, flight.err
@@ -82,7 +94,10 @@ func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rot
 		if errors.Is(err, provider.ErrInvalidAccessToken) {
 			updates["survival_alive"] = false
 		}
-		_, _, _ = s.store.UpdateAccount(accountToken(account), updates)
+		if _, updateErr := s.store.UpdateAccountIfCredentialsMatch(version, updates); updateErr != nil {
+			flight.err = updateErr
+			return nil, updateErr
+		}
 		flight.err = err
 		return nil, err
 	}
@@ -98,9 +113,6 @@ func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rot
 	fields["survival_alive"] = true
 	fields["survival_plan_type"] = plan
 	fields["survival_check_error"] = nil
-	flight.account, _, flight.err = s.store.RotateAccountTokens(accountToken(account), result.AccessToken, result.RefreshToken, result.IDToken, fields)
-	if flight.err == nil && flight.account == nil {
-		flight.err = errors.New("account credentials changed during refresh; retry with current credentials")
-	}
+	flight.account, flight.err = s.store.CompleteAccountRefresh(version, fields)
 	return cloneMap(flight.account), flight.err
 }

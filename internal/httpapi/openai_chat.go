@@ -38,7 +38,7 @@ func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, requ
 			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
 			excluded[lease.Account.Token] = true
 			lastErr = err
-			if attempt < s.cfg.ChatMaxRetries {
+			if s.shouldRetry(upstreamStatus(err), attempt) {
 				continue
 			}
 			break
@@ -110,7 +110,7 @@ func (s *Server) streamOpenAIChat(w http.ResponseWriter, r *http.Request, reques
 			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
 			excluded[lease.Account.Token] = true
 			lastErr = err
-			if !emitted && attempt < s.cfg.ChatMaxRetries {
+			if !emitted && s.shouldRetry(upstreamStatus(err), attempt) {
 				continue
 			}
 			break
@@ -194,7 +194,7 @@ func (s *Server) completeOpenAIImageChat(w http.ResponseWriter, r *http.Request,
 			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
 			excluded[lease.Account.Token] = true
 			lastErr = err
-			if s.shouldRetry(upstreamStatus(err), attempt) {
+			if !provider.ImageSubmissionUncertain(err) && s.shouldRetry(upstreamStatus(err), attempt) {
 				continue
 			}
 			break
@@ -211,6 +211,7 @@ func (s *Server) completeOpenAIImageChat(w http.ResponseWriter, r *http.Request,
 	for _, image := range images {
 		item, localURL, resolveErr := s.openAIImage.Resolve(r.Context(), selected, image, "url", s.cfg.ImageDataDir, requestPublicBase(r))
 		if resolveErr != nil {
+			w.Header().Set("X-Image-Submission-Uncertain", "true")
 			s.accountPool.Feedback(selected, upstreamStatus(resolveErr), resolveErr)
 			writeError(w, upstreamStatus(resolveErr), resolveErr.Error(), "upstream_error")
 			return
@@ -297,6 +298,7 @@ func responseContent(response map[string]any) string {
 }
 
 func writeOpenAIChatError(w http.ResponseWriter, err error) {
+	markImageSubmissionUncertain(w, err)
 	status := upstreamStatus(err)
 	if errors.Is(err, accounts.ErrUnavailable) {
 		status = http.StatusTooManyRequests

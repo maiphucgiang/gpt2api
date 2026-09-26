@@ -1,23 +1,24 @@
 <template>
   <div class="date-range-inputs">
-    <Input
-      :model-value="start"
+    <input
+      :value="start"
       type="date"
-      :root-class="['date-range-input', inputRootClass].filter(Boolean).join(' ')"
-      @update:model-value="emit('update:start', String($event || ''))"
+      aria-label="开始日期"
+      :class="['ui-input-sm date-range-input', inputRootClass]"
+      @input="emit('update:start', ($event.currentTarget as HTMLInputElement).value)"
     />
     <span class="date-range-separator">{{ separator }}</span>
-    <Input
-      :model-value="end"
+    <input
+      :value="end"
       type="date"
-      :root-class="['date-range-input', inputRootClass].filter(Boolean).join(' ')"
-      @update:model-value="emit('update:end', String($event || ''))"
+      aria-label="结束日期"
+      :class="['ui-input-sm date-range-input', inputRootClass]"
+      @input="emit('update:end', ($event.currentTarget as HTMLInputElement).value)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { Input } from 'nanocat-ui'
 
 withDefaults(defineProps<{
   start?: string

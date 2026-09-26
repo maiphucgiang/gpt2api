@@ -151,7 +151,8 @@ export function useAccountGroupsRuntime(options: AccountGroupsRuntimeOptions) {
     }
   }
 
-  function setAccountGroupProxyMode(mode: string) {
+  function setAccountGroupProxyMode(mode: string | string[]) {
+    if (typeof mode !== 'string') return
     const nextMode = ['global', 'direct', 'group', 'custom'].includes(mode)
       ? mode as AccountProxyMode
       : 'global'
@@ -169,7 +170,8 @@ export function useAccountGroupsRuntime(options: AccountGroupsRuntimeOptions) {
     }
   }
 
-  function selectAccountGroupProxyGroup(groupId: string) {
+  function selectAccountGroupProxyGroup(groupId: string | string[]) {
+    if (typeof groupId !== 'string') return
     selectedAccountGroupProxyGroupId.value = groupId.trim()
     accountGroupProxyMode.value = 'group'
     accountGroupForm.proxy_group_id = selectedAccountGroupProxyGroupId.value

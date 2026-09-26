@@ -34,43 +34,52 @@ import (
 )
 
 type Server struct {
-	cfg                   config.Config
-	auth                  *auth.Validator
-	store                 *store.Store
-	catalog               []model.Spec
-	client                *http.Client
-	requestClient         *http.Client
-	accountPool           *accounts.Pool
-	openAIImage           *provider.OpenAIImage
-	openAIChat            *provider.OpenAIChat
-	gptMail               *provider.GPTMail
-	proxyManager          *proxyruntime.Manager
-	openAILogin           *oauth.OpenAILogin
-	agentIdentityStore    *agentidentity.Store
-	registerStore         *registerruntime.Store
-	registerRuntime       *registerruntime.Runtime
-	monitor               *runtimeMonitor
-	logMu                 sync.Mutex
-	imageTaskMu           sync.RWMutex
-	imageTasks            map[string]*imageTaskState
-	imageSlots            chan struct{}
-	fileTaskMu            sync.RWMutex
-	fileTasks             map[string]*editableFileTaskState
-	schedulerMu           sync.Mutex
-	schedulerLeases       map[string]map[string]any
-	external              *externalManager
-	refreshMu             sync.RWMutex
-	refreshProgress       map[string]*accountRefreshProgress
-	accountRefreshMu      sync.Mutex
-	accountRefreshFlights map[string]*accountRefreshFlight
-	backgroundContext     context.Context
-	backgroundCancel      context.CancelFunc
-	backgroundWorkers     sync.WaitGroup
-	survivalMu            sync.RWMutex
-	survivalStatus        map[string]any
-	survivalRunning       bool
-	survivalWake          chan struct{}
-	proxyProbeURL         string
+	cfg                     config.Config
+	auth                    *auth.Validator
+	store                   *store.Store
+	catalog                 []model.Spec
+	client                  *http.Client
+	requestClient           *http.Client
+	accountPool             *accounts.Pool
+	openAIImage             *provider.OpenAIImage
+	openAIChat              *provider.OpenAIChat
+	gptMail                 *provider.GPTMail
+	proxyManager            *proxyruntime.Manager
+	openAILogin             *oauth.OpenAILogin
+	agentIdentityStore      *agentidentity.Store
+	registerStore           *registerruntime.Store
+	registerRuntime         *registerruntime.Runtime
+	monitor                 *runtimeMonitor
+	logMu                   sync.Mutex
+	imageTaskMu             sync.RWMutex
+	imageTasks              map[string]*imageTaskState
+	imageTaskQueue          chan imageTaskWork
+	imageTaskPreparers      chan struct{}
+	imageTaskWorkers        sync.WaitGroup
+	imageTaskWorkersStarted bool
+	imageTaskPending        int
+	imageTaskReserved       int
+	imageTaskClosed         bool
+	imageTaskLoadErr        error
+	imageTaskWriteErr       error
+	imageSlots              chan struct{}
+	fileTaskMu              sync.RWMutex
+	fileTasks               map[string]*editableFileTaskState
+	schedulerMu             sync.Mutex
+	schedulerLeases         map[string]map[string]any
+	external                *externalManager
+	refreshMu               sync.RWMutex
+	refreshProgress         map[string]*accountRefreshProgress
+	accountRefreshMu        sync.Mutex
+	accountRefreshFlights   map[string]*accountRefreshFlight
+	backgroundContext       context.Context
+	backgroundCancel        context.CancelFunc
+	backgroundWorkers       sync.WaitGroup
+	survivalMu              sync.RWMutex
+	survivalStatus          map[string]any
+	survivalRunning         bool
+	survivalWake            chan struct{}
+	proxyProbeURL           string
 }
 
 func New(cfg config.Config) *Server {
@@ -101,6 +110,7 @@ func New(cfg config.Config) *Server {
 	proxyManager.SetImageNodeResultCallback(server.persistProxyGroupRuntimeResult)
 	server.accountPool.SetInvalidCallback(server.maybeAutoRemoveInvalidAccount)
 	server.loadEditableFileTasks()
+	server.initImageTasks()
 	if cfg.Version != "test" {
 		server.backgroundWorkers.Add(2)
 		go server.imageRetentionScheduler()
@@ -663,8 +673,17 @@ func chatMessagesFromAny(value any) []protocol.Message {
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":              "ok",
+	s.imageTaskMu.RLock()
+	ready := s.imageTaskLoadErr == nil && s.imageTaskWriteErr == nil && !s.imageTaskClosed
+	tasks := map[string]any{"ready": ready, "pending": s.imageTaskPending, "workers": s.cfg.ImageTaskWorkers, "capacity": cap(s.imageTaskQueue)}
+	s.imageTaskMu.RUnlock()
+	status, label := http.StatusOK, "ok"
+	if s.cfg.DataDir != "" && !ready {
+		status, label = http.StatusServiceUnavailable, "degraded"
+	}
+	writeJSON(w, status, map[string]any{
+		"status":              label,
+		"image_tasks":         tasks,
 		"runtime":             "go",
 		"version":             s.cfg.Version,
 		"upstream_configured": s.cfg.UpstreamURL != "",

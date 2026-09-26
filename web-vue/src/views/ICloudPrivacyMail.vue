@@ -118,7 +118,7 @@
                 <div class="flex flex-wrap gap-2">
                   <Button size="sm" variant="primary" :disabled="schedulerBusy || Boolean(scheduler?.running) || selectedAccountIds.length === 0" @click="startScheduler"><Icon icon="lucide:play" class="h-3.5 w-3.5" />{{ schedulerBusy ? '启动中...' : '启动定时创建' }}</Button>
                   <Button size="sm" variant="outline" :disabled="schedulerBusy || !scheduler?.running" @click="stopScheduler"><Icon icon="lucide:square" class="h-3.5 w-3.5" />停止</Button>
-                  <Button size="sm" variant="ghost" title="清除定时创建日志" :disabled="schedulerBusy || !(scheduler?.events || []).length" @click="clearSchedulerLogs"><Icon icon="lucide:trash-2" class="h-3.5 w-3.5" />清除日志</Button>
+                  <Button size="sm" variant="outline" title="清除定时创建日志" :disabled="schedulerBusy || !(scheduler?.events || []).length" @click="clearSchedulerLogs"><Icon icon="lucide:trash-2" class="h-3.5 w-3.5" />清除日志</Button>
                 </div>
                 <div v-if="scheduler?.running || scheduler?.next_run_at || scheduler?.last_error" class="space-y-1 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
                   <p v-if="scheduler?.next_run_at" class="text-muted-foreground">下一次执行：{{ formatDate(scheduler.next_run_at) }}</p>
@@ -179,7 +179,7 @@
                 <Button data-action="copy-pair" size="xs" variant="outline" :disabled="!mailbox.email || !mailbox.api_url" @click="copyMailboxPair(mailbox)"><Icon icon="lucide:clipboard" class="h-3.5 w-3.5" />邮箱+API</Button>
                 <Button size="xs" variant="outline" :disabled="mailboxBusy || !mailbox.id" @click="syncMailbox(mailbox)"><Icon icon="lucide:download" class="h-3.5 w-3.5" />同步邮件</Button>
                 <Button size="xs" variant="outline" :disabled="codeBusyId === mailbox.id || !mailbox.id" @click="fetchCode(mailbox)"><Icon icon="lucide:key-round" class="h-3.5 w-3.5" />{{ codeBusyId === mailbox.id ? '取码中...' : '取验证码' }}</Button>
-                <Button size="xs" variant="ghost" :disabled="messageBusyId === mailbox.id || !mailbox.id" @click="toggleMessages(mailbox)">{{ messageBusyId === mailbox.id ? '加载中...' : expandedMailboxId === mailbox.id ? '收起邮件' : '查看邮件' }}</Button>
+                <Button size="xs" variant="outline" :disabled="messageBusyId === mailbox.id || !mailbox.id" @click="toggleMessages(mailbox)">{{ messageBusyId === mailbox.id ? '加载中...' : expandedMailboxId === mailbox.id ? '收起邮件' : '查看邮件' }}</Button>
               </div>
               <div v-if="codeByMailbox[mailbox.id || '']" class="mt-3 flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2 dark:bg-emerald-950/30">
                 <span class="text-xs text-emerald-700 dark:text-emerald-300">最新验证码</span><strong class="font-mono text-lg tracking-[0.2em] text-emerald-800 dark:text-emerald-200">{{ codeByMailbox[mailbox.id || ''] }}</strong>

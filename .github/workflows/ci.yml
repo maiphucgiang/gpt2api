@@ -35,5 +35,5 @@ jobs:
         run: bash scripts/check.sh test
       - name: CI build
         run: bash scripts/check.sh build
-      - name: Static analysis
+      - name: Static analysis and Vue SFC checks
         run: bash scripts/check.sh static

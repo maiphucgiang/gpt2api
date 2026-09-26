@@ -74,7 +74,8 @@ export function useAccountProxyRuntime(options: AccountProxyRuntimeOptions) {
     }
   }
 
-  function setProxyMode(mode: string) {
+  function setProxyMode(mode: string | string[]) {
+    if (typeof mode !== 'string') return
     const nextMode = ['global', 'direct', 'group', 'custom'].includes(mode)
       ? mode as AccountProxyMode
       : 'global'
@@ -90,7 +91,8 @@ export function useAccountProxyRuntime(options: AccountProxyRuntimeOptions) {
     }
   }
 
-  function selectProxyGroup(groupId: string) {
+  function selectProxyGroup(groupId: string | string[]) {
+    if (typeof groupId !== 'string') return
     selectedProxyGroupId.value = groupId.trim()
     proxyMode.value = 'group'
     options.proxyValue.value = serializeProxyReference('group', selectedProxyGroupId.value)

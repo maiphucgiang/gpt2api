@@ -62,6 +62,7 @@ func (c *OpenAIChat) Stream(ctx context.Context, account accounts.Account, reque
 	defer response.Body.Close()
 
 	state := openAIChatState{}
+	completed := false
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 4096), 8<<20)
 	for scanner.Scan() {
@@ -86,6 +87,7 @@ func (c *OpenAIChat) Stream(ctx context.Context, account accounts.Account, reque
 		if eventErr != nil {
 			return eventErr
 		}
+		completed = completed || event.Done
 		if event.Text != "" || event.Thinking != "" || event.Done {
 			if err := onEvent(event); err != nil {
 				return err
@@ -94,6 +96,9 @@ func (c *OpenAIChat) Stream(ctx context.Context, account accounts.Account, reque
 	}
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+	if !completed {
+		return fmt.Errorf("upstream stream ended without a completion marker")
 	}
 	return onEvent(OpenAIChatEvent{Done: true})
 }
@@ -131,6 +136,14 @@ func (s *openAIChatState) event(value any) (OpenAIChatEvent, error) {
 		}
 		if object["is_complete"] == true || object["finished_successfully"] == true {
 			event.Done = true
+		}
+		for _, candidate := range []any{object, object["v"]} {
+			value, _ := candidate.(map[string]any)
+			message, _ := value["message"].(map[string]any)
+			author, _ := message["author"].(map[string]any)
+			if author["role"] == "assistant" && (message["status"] == "finished_successfully" || message["end_turn"] == true) {
+				event.Done = true
+			}
 		}
 	}
 	return event, nil

@@ -43,7 +43,7 @@
                 <Button
                   v-if="disabledProviderCount"
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   :aria-expanded="showDisabledProviders"
                   aria-controls="disabled-register-providers"
                   @click="showDisabledProviders = !showDisabledProviders"

@@ -797,7 +797,6 @@ import AccountTableRow from './accounts/AccountTableRow.vue'
 import { useAccountsPage } from './accounts/useAccountsPage'
 import { useAccountActionMenuRuntime } from './accounts/accountActionMenuRuntime'
 import { useToast } from '@/composables/useToast'
-import { errorMessage } from '@/lib/errorMessage'
 import {
   accountGroupLabel as buildAccountGroupLabel,
   accountGroupNameMap as buildAccountGroupNameMap,
@@ -856,7 +855,6 @@ const {
   statusFilterOptions,
   groupFilterOptions,
   editingId,
-  accounts,
   accountListTotal,
   accountAllTotal,
   selectedCount,
@@ -929,7 +927,6 @@ const {
   testAccountProxy,
   openAccountGroupsModal,
   closeAccountGroupsModal,
-  resetAccountGroupForm,
   editAccountGroup,
   saveAccountGroup,
   deleteAccountGroup,

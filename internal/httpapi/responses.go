@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -34,9 +34,12 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "model not found", "invalid_request_error")
 		return
 	}
-	messages := protocol.ResponsesInputMessages(request.Input, request.Instructions)
-	if len(messages) == 0 {
-		writeError(w, 400, "input cannot be empty", "invalid_request_error")
+	messages, err := protocol.ParseResponsesInput(request.Input, request.Instructions)
+	if err == nil {
+		err = validateResponsesRequest(request, route, messages)
+	}
+	if err != nil {
+		writeError(w, 400, err.Error(), "invalid_request_error")
 		return
 	}
 	chat := protocol.ChatRequest{Model: request.Model, Messages: messages, Temperature: request.Temperature, TopP: request.TopP, MaxTokens: request.MaxOutputTokens, Tools: request.Tools, ToolChoice: request.ToolChoice, ReasoningEffort: stringValue(request.Reasoning["effort"])}
@@ -51,6 +54,9 @@ func (s *Server) completeWebResponses(w http.ResponseWriter, r *http.Request, re
 	recorder := &responseCapture{header: make(http.Header)}
 	s.completeChat(recorder, r, request, route)
 	if recorder.status >= 400 {
+		for key, values := range recorder.header {
+			w.Header()[key] = values
+		}
 		w.WriteHeader(recorder.status)
 		_, _ = w.Write(recorder.body.Bytes())
 		return
@@ -64,41 +70,20 @@ func (s *Server) completeWebResponses(w http.ResponseWriter, r *http.Request, re
 }
 
 func (s *Server) streamWebResponses(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
-	recorder := &responseCapture{header: make(http.Header)}
-	s.completeChat(recorder, r, request, route)
-	if recorder.status >= 400 {
-		w.WriteHeader(recorder.status)
-		_, _ = w.Write(recorder.body.Bytes())
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(ctx)
+	request.Stream = true
+	stream := newResponsesStreamWriter(w, ctx, cancel, request)
+	if stream.err != nil || ctx.Err() != nil {
 		return
 	}
-	var chat map[string]any
-	if err := json.Unmarshal(recorder.body.Bytes(), &chat); err != nil {
-		writeError(w, 502, "invalid internal response", "server_error")
-		return
+	if route.Image {
+		s.streamOpenAIImageChat(stream, r, request)
+	} else {
+		s.streamOpenAIChat(stream, r, request, route)
 	}
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	response := responseFromChat(chat, request.Model)
-	responseID := stringValue(response["id"])
-	writeEventSSE(w, "response.created", map[string]any{"type": "response.created", "response": map[string]any{"id": responseID, "object": "response", "status": "in_progress", "model": request.Model}})
-	writeEventSSE(w, "response.in_progress", map[string]any{"type": "response.in_progress", "response": map[string]any{"id": responseID, "object": "response", "status": "in_progress", "model": request.Model}})
-	items, _ := response["output"].([]any)
-	for index, raw := range items {
-		item, _ := raw.(map[string]any)
-		writeEventSSE(w, "response.output_item.added", map[string]any{"type": "response.output_item.added", "output_index": index, "item": item})
-		if content, ok := item["content"].([]any); ok && len(content) > 0 {
-			if part, ok := content[0].(map[string]any); ok {
-				writeEventSSE(w, "response.output_text.delta", map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": index, "content_index": 0, "delta": part["text"]})
-			}
-		}
-		writeEventSSE(w, "response.output_item.done", map[string]any{"type": "response.output_item.done", "output_index": index, "item": item})
-	}
-	response["status"] = "completed"
-	writeEventSSE(w, "response.completed", map[string]any{"type": "response.completed", "response": response})
-	_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	stream.finish()
 }
 
 func responseFromChat(chat map[string]any, modelName string) map[string]any {
@@ -123,7 +108,8 @@ func responseFromChat(chat map[string]any, modelName string) map[string]any {
 	if len(output) == 0 {
 		output = []any{map[string]any{"id": "msg_" + id, "type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": content, "annotations": []any{}}}}}
 	}
-	return map[string]any{"id": "resp_" + id, "object": "response", "created_at": time.Now().Unix(), "status": "completed", "model": modelName, "output": output, "usage": chat["usage"]}
+	usage, _ := chat["usage"].(map[string]any)
+	return map[string]any{"id": "resp_" + id, "object": "response", "created_at": time.Now().Unix(), "status": "completed", "model": modelName, "output": output, "usage": responsesUsage(usage), "store": false, "parallel_tool_calls": false, "tool_choice": "none", "tools": []any{}}
 }
 
 type responseCapture struct {

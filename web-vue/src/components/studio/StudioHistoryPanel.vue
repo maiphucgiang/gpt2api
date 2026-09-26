@@ -9,7 +9,7 @@
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
             icon-only
             root-class="rounded-xl"
             :disabled="!conversations.length"

@@ -65,7 +65,11 @@ const canShowTag = computed(() => props.showActions && props.showTagAction)
 
 function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   if (!props.file) return
-  emit(event, props.file)
+  switch (event) {
+    case 'download': emit('download', props.file); break
+    case 'copy': emit('copy', props.file); break
+    case 'edit-tags': emit('edit-tags', props.file); break
+  }
 }
 </script>
 

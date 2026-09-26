@@ -78,15 +78,15 @@ export interface Settings {
   image_poll_initial_wait_secs?: number
   image_account_concurrency?: number
   image_parallel_generation?: boolean
-  image_remove_conversation_after_result?: boolean
-  image_error_friendly_enabled?: boolean
+  image_remove_conversation_after_result: boolean
+  image_error_friendly_enabled: boolean
   image_error_messages: ImageErrorMessages
-  image_settle_enabled?: boolean
+  image_settle_enabled: boolean
   image_check_before_hit_enabled?: boolean
   image_settle_secs?: number
   image_timeout_retry_secs?: number
-  auto_remove_invalid_accounts?: boolean
-  auto_remove_rate_limited_accounts?: boolean
+  auto_remove_invalid_accounts: boolean
+  auto_remove_rate_limited_accounts: boolean
   log_levels: string[]
   global_system_prompt?: string
   sensitive_words?: string[]
@@ -155,7 +155,7 @@ export interface Settings {
     webdav_root_path: string
     public_base_url: string
   }
-  backup?: {
+  backup: {
     enabled: boolean
     provider: string
     account_id: string

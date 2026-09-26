@@ -114,11 +114,5 @@ const {
   timeRangeModel,
   timeRangeModelRank,
   timeRangeResponseTime,
-  hourlyRequestsChartRef,
-  trendChartRef,
-  successRateChartRef,
-  responseTimeChartRef,
-  modelChartRef,
-  modelRankChartRef,
 } = useDashboardPage()
 </script>

@@ -12,6 +12,10 @@ Go 后端与 Vue 控制台，提供 GPT 账号管理和 OpenAI 兼容接口。
 
 账号自动检查默认每 60 分钟运行，配额恢复到期后补查；账号页可见时每 10 秒读取本地状态。成功／失败按账号业务调用尝试累计，不包含配额检查，不补算无法确认的历史次数。
 
+OAuth 轮换成功后先保存新凭证，再查询资料和配额；探测失败不丢凭证。并发更新按凭证版本校验，旧令牌的在途反馈只累计次数，不覆盖新凭证的健康状态。
+
+凭证写盘失败会报错并停止资料探测，新凭证暂留内存并定时补写。修复磁盘后确认写盘成功再重启；补写前进程退出仍可能丢失新凭证。
+
 ## Docker 启动
 
 需要 Docker Compose 2.24+。安装脚本仅使用已有工具，不下载或执行远程安装脚本。
@@ -72,6 +76,10 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 | `GO_PROXY_URL` / `GO_PROXY_POOL` | 默认代理或代理池 |
 | `GO_IMAGE_MAX_CONCURRENCY` | 图片全局并发上限 |
 | `GO_IMAGE_RETENTION_DAYS` | 图片保留天数，默认 1 天 |
+| `GO_IMAGE_TASK_WORKERS` | 控制台图片任务工作线程，默认 2，按单张输出计 |
+| `GO_IMAGE_TASK_QUEUE_SIZE` | 控制台图片等待容量，默认 64 |
+| `GO_IMAGE_TASK_RETENTION_HOURS` | 控制台终态任务记录保留时间，默认 24 小时 |
+| `GO_IMAGE_SCHEDULER_KEY` | 源码运行的内部调度密钥；Compose 使用 `IMAGE_SCHEDULER_INTERNAL_KEY` 映射 |
 
 `GO_CONFIG_PATH`、`GO_ACCOUNTS_PATH`、`GO_AUTH_KEYS_PATH`、`GO_REGISTER_PATH` 可覆盖具体路径。默认配置写入 `data/config.json`；首次运行可复制旧根目录 `config.json`，不覆盖已有数据配置。历史认证环境变量仍可作为回退。
 
@@ -97,6 +105,20 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 
 CPA 导入会报告新增、重复、类型不支持及失败数量；类型不明确的文件不导入。OAuth 文件、账号导出和备份均含秘密，应限制访问并离线保存。
 
+### 图片任务与恢复
+
+控制台使用 `POST /api/image-tasks/generations` 或 `/edits` 提交任务；按用户和 `client_task_id` 幂等，同 ID 不同输入返回 409，容量不足返回 429。任务元数据保存在私有的 `data/image_tasks.json`，参考图片只暂存到任务结束；启动和新建任务时清理过期终态记录，最多保留 2000 条。
+
+重启后不自动重新生成。已取得上游会话的失败任务可通过 `POST /api/image-tasks/{id}/resume-poll` 续取，`extra_timeout_secs` 默认 30、范围 1–120；仅查询原账号的原会话，保留已完成输出。凭证轮换和额度耗尽不影响续取资格，禁用或移除原账号后不会切换账号代取。
+
+存储异常会拒绝新任务，`/health` 返回 503。升级前检查 `image_tasks.pending`、HTTP 在途请求及 Redis 网关队列。网关遇到执行结果不明或 `X-Image-Submission-Uncertain: true` 时不自动重发，避免重复生成。内部调度密钥未配置时，内部接口返回 503。
+
+### Responses 边界
+
+`stream:true` 按上游增量发送事件，包含事件序号、内容结束及终态；取消会传播到上游，断流或错误不会伪造 `response.completed`。图片模型仍返回图片链接的 Markdown。
+
+当前 Web 后端不支持函数/内置工具、结构化输出、文本模型的图片输入、服务端保存、后台 Responses 或 `previous_response_id`，这些参数明确返回 400；请携带完整历史并使用 `store:false`。采样和输出长度参数兼容接收，但上游不保证执行；`usage` 为估算。
+
 ## 验证
 
 ```bash
@@ -105,7 +127,7 @@ bash scripts/check.sh build
 bash scripts/check.sh static
 ```
 
-CI 按上述顺序执行；发布流水线通过同一门禁后才构建发布镜像。`build` 会构建三个本地镜像，不启动服务。
+CI 按上述顺序执行；发布流水线通过同一门禁后才构建发布镜像。`build` 构建三个本地镜像，不启动服务；`static` 包含完整 `vue-tsc --noEmit`，前端测试覆盖组件事件、账号轮询和 CPA 导入。
 
 ## 文档
 

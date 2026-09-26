@@ -49,7 +49,7 @@ const props = withDefaults(defineProps<{
   page: number
   pageSize: number
   totalCount: number
-  pageSizeOptions?: number[]
+  pageSizeOptions?: readonly number[]
   unit?: string
   disabled?: boolean
   placement?: MenuPlacement

@@ -26,7 +26,7 @@
         </Checkbox>
         <Button
           size="sm"
-          variant="ghost"
+          variant="outline"
           :disabled="disabled || providerCount <= 1"
           @click="emit('delete', index)"
         >
@@ -62,7 +62,7 @@
         <label v-if="currentType === 'gptmail'" class="register-field">
           <span class="register-label">Key 来源</span>
           <GroupedSelectMenu
-            :model-value="provider.key_mode"
+            :model-value="provider.key_mode || 'public'"
             :groups="gptMailKeyModeGroups"
             selected-indicator="none"
             :disabled="disabled"
@@ -175,7 +175,7 @@
 
         <label v-if="currentType === 'icloud_api'" class="register-checkbox-field register-checkbox-field--compact register-field--full">
           <Checkbox
-            :model-value="provider.use_proxy"
+            :model-value="Boolean(provider.use_proxy)"
             :disabled="disabled"
             @update:model-value="value => emit('update-field', index, 'use_proxy', Boolean(value))"
           >
@@ -274,7 +274,7 @@
         <label v-if="currentType === 'ddg_mail'" class="register-field">
           <span class="register-label">CF 鉴权方式</span>
           <GroupedSelectMenu
-            :model-value="provider.cf_auth_mode"
+            :model-value="provider.cf_auth_mode || 'none'"
             :groups="cfAuthModeGroups"
             selected-indicator="none"
             :disabled="disabled"
@@ -319,7 +319,7 @@
 
         <label v-if="currentType === 'inbucket'" class="register-checkbox-field">
           <Checkbox
-            :model-value="provider.random_subdomain"
+            :model-value="provider.random_subdomain !== false"
             :disabled="disabled"
             @update:model-value="value => emit('update-field', index, 'random_subdomain', Boolean(value))"
           >
@@ -329,7 +329,7 @@
 
         <label v-if="currentType === 'yyds_mail'" class="register-checkbox-field">
           <Checkbox
-            :model-value="provider.wildcard"
+            :model-value="Boolean(provider.wildcard)"
             :disabled="disabled"
             @update:model-value="value => emit('update-field', index, 'wildcard', Boolean(value))"
           >
@@ -339,7 +339,7 @@
 
         <label v-if="currentType === 'gptmail'" class="register-checkbox-field register-checkbox-field--compact register-field--full">
           <Checkbox
-            :model-value="provider.local_compose"
+            :model-value="Boolean(provider.local_compose)"
             :disabled="disabled"
             @update:model-value="value => emit('update-field', index, 'local_compose', Boolean(value))"
           >
@@ -457,7 +457,7 @@
         <div class="register-form-grid register-form-grid--three">
           <label class="register-checkbox-field register-checkbox-field--compact register-field--full">
             <Checkbox
-              :model-value="provider.alias_enabled"
+              :model-value="Boolean(provider.alias_enabled)"
               :disabled="disabled"
               @update:model-value="value => emit('update-field', index, 'alias_enabled', Boolean(value))"
             >
@@ -492,7 +492,7 @@
 
           <label class="register-checkbox-field register-checkbox-field--compact">
             <Checkbox
-              :model-value="provider.alias_include_original"
+              :model-value="provider.alias_include_original !== false"
               :disabled="disabled || !provider.alias_enabled"
               @update:model-value="value => emit('update-field', index, 'alias_include_original', Boolean(value))"
             >
@@ -554,7 +554,7 @@
             </MetaChip>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               :disabled="disabled || saving"
               @click="selectFirstFailedMailboxes"
             >
@@ -782,6 +782,12 @@ const mailcomDomainsText = computed({
   set: (value: string) => {
     const list = value.split(/[\n,]/).map((item: string) => item.trim()).filter(Boolean)
     emit('update-field', props.index, 'domains', list)
+  },
+})
+const mailcomProxiesText = computed({
+  get: () => arrayText(props.provider.proxies),
+  set: (value: string) => {
+    emit('update-field', props.index, 'proxies', value.split(/\r?\n/).map(item => item.trim()).filter(Boolean))
   },
 })
 const failedMailboxes = computed<OutlookFailedMailbox[]>(() => (

@@ -111,7 +111,8 @@ const actionItems = computed(() => proxyGroupActionItems(
 ))
 
 function emitWithGroup(event: 'copy-reference' | 'edit') {
-  emit(event, props.group)
+  if (event === 'copy-reference') emit('copy-reference', props.group)
+  else emit('edit', props.group)
 }
 
 function handleAction(action: string) {

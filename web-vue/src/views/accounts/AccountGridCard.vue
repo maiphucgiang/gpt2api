@@ -107,7 +107,7 @@ const signature = computed(() => accountRowSignature(props.item))
 const detailSignature = computed(() => boundedSignatureText(props.statusDetailText(props.item)))
 
 const emit = defineEmits<{
-  (e: 'toggle-select', id: string, checked: unknown): void
+  (e: 'toggle-select', id: string, checked: boolean): void
   (e: 'copy-token', item: Account): void
   (e: 'edit', item: Account): void
   (e: 'toggle-enabled', item: Account): void

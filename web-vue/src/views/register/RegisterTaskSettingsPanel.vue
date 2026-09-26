@@ -97,7 +97,7 @@
             selected-indicator="none"
             :disabled="config.enabled"
             block
-            @update:model-value="emit('update-proxy-mode', $event)"
+            @update:model-value="updateProxyMode"
           />
         </label>
 
@@ -109,7 +109,7 @@
             selected-indicator="none"
             :disabled="config.enabled"
             block
-            @update:model-value="emit('select-proxy-group', $event)"
+            @update:model-value="value => typeof value === 'string' && emit('select-proxy-group', value)"
           />
         </label>
 
@@ -151,7 +151,7 @@
         >
           <legend class="register-label">Pix 提链方案</legend>
           <SegmentedTabs
-            :model-value="config.checkout.pix_protocol"
+            :model-value="config.checkout.pix_protocol || 'enhanced'"
             :options="pixProtocolOptions"
             aria-label="Pix 提链方案"
             @update:model-value="updatePixProtocol(String($event))"
@@ -303,7 +303,7 @@
         </Button>
         <Button
           size="sm"
-          variant="ghost"
+          variant="outline"
           icon-only
           root-class="h-8 w-8 shrink-0"
           :title="sub2apiExpanded ? '收起外部同步' : '展开外部同步'"
@@ -465,7 +465,7 @@
       <template #actions>
         <Button
           size="sm"
-          variant="ghost"
+          variant="outline"
           icon-only
           root-class="h-8 w-8 shrink-0"
           :title="mailRequestExpanded ? '收起邮箱请求' : '展开邮箱请求'"
@@ -542,6 +542,7 @@ import { Button, Checkbox, Input, SegmentedTabs } from 'nanocat-ui'
 
 import FormSection from '@/components/ai/FormSection.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
+import type { GroupedSelectGroup } from '@/components/ui/groupedSelectTypes'
 import { accountImportsApi } from '@/api/accountImports'
 import type { CPAPool, Sub2APIRemoteGroup, Sub2APIServer } from '@/api/accountImports'
 import { proxyApi, type ProxySampleTestResult } from '@/api/proxy'
@@ -574,7 +575,7 @@ const props = defineProps<{
   proxyMode: RegisterProxyMode
   selectedProxyGroupId: string
   customProxyInput: string
-  proxyGroupGroups: unknown[]
+  proxyGroupGroups: readonly GroupedSelectGroup[]
   proxyHint: string
 }>()
 
@@ -591,6 +592,12 @@ const mailRequestExpanded = ref(false)
 let sub2apiGroupRequestVersion = 0
 
 type CheckoutProxyTestStage = 'checkout' | 'promotion'
+
+function updateProxyMode(value: string | string[]) {
+  if (value === 'global' || value === 'direct' || value === 'group' || value === 'custom') {
+    emit('update-proxy-mode', value)
+  }
+}
 
 function updateCheckoutChannel(value: string) {
   const channel = value === 'pix' ? 'pix' : 'upi'

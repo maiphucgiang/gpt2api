@@ -1,7 +1,7 @@
 FROM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-COPY main.go ./
+COPY *.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -mod=readonly -trimpath -ldflags="-s -w" -o /image-gateway .
 
 FROM alpine:3.21

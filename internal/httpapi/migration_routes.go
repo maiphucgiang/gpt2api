@@ -446,7 +446,7 @@ func (s *Server) internalImageScheduler(w http.ResponseWriter, r *http.Request) 
 		s.schedulerMu.Lock()
 		items := make([]map[string]any, 0, len(s.schedulerLeases))
 		for _, item := range s.schedulerLeases {
-			items = append(items, item)
+			items = append(items, cloneMap(item))
 		}
 		s.schedulerMu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"runtime": "go", "active": len(items), "reservations": items})
@@ -460,6 +460,16 @@ func (s *Server) internalImageScheduler(w http.ResponseWriter, r *http.Request) 
 		id := "reservation_" + randomID()
 		item := map[string]any{"id": id, "reservation_id": id, "model": firstNonEmpty(stringValue(body["model"]), "gpt-image-2"), "status": "reserved", "created_at": time.Now().UTC()}
 		s.schedulerMu.Lock()
+		for key, lease := range s.schedulerLeases {
+			if created, ok := lease["created_at"].(time.Time); ok && time.Since(created) > 10*time.Minute && lease["status"] != "claimed" {
+				delete(s.schedulerLeases, key)
+			}
+		}
+		if len(s.schedulerLeases) >= 1024 {
+			s.schedulerMu.Unlock()
+			writeError(w, 429, "too many scheduler reservations", "rate_limit_error")
+			return
+		}
 		s.schedulerLeases[id] = item
 		s.schedulerMu.Unlock()
 		writeJSON(w, http.StatusOK, item)
@@ -473,22 +483,29 @@ func (s *Server) internalImageScheduler(w http.ResponseWriter, r *http.Request) 
 	id, action := parts[0], parts[1]
 	s.schedulerMu.Lock()
 	item := s.schedulerLeases[id]
-	if item == nil {
-		s.schedulerMu.Unlock()
-		writeError(w, http.StatusNotFound, "reservation not found", "not_found")
-		return
-	}
 	if action == "release" {
 		delete(s.schedulerLeases, id)
 		s.schedulerMu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "reservation_id": id, "status": "released"})
 		return
 	}
+	if item == nil {
+		s.schedulerMu.Unlock()
+		writeError(w, 404, "reservation not found", "not_found")
+		return
+	}
 	if action == "execute" || action == "execute-edit" {
+		if item["status"] != "reserved" {
+			s.schedulerMu.Unlock()
+			w.Header().Set("X-Image-Submission-Uncertain", "true")
+			writeError(w, 409, "reservation is already executing", "image_task_error")
+			return
+		}
 		item["status"] = "claimed"
 		item["claimed_at"] = time.Now().UTC()
 		s.schedulerMu.Unlock()
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "lease": item, "execution": "handled directly by Go public image endpoint"})
+		defer func() { s.schedulerMu.Lock(); delete(s.schedulerLeases, id); s.schedulerMu.Unlock() }()
+		s.executeImageReservation(w, r, action == "execute-edit")
 		return
 	}
 	s.schedulerMu.Unlock()
@@ -526,8 +543,12 @@ func (s *Server) internalCallLog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) requireInternal(w http.ResponseWriter, r *http.Request) bool {
 	expected := strings.TrimSpace(os.Getenv("GO_IMAGE_SCHEDULER_KEY"))
+	if expected == "" {
+		writeError(w, http.StatusServiceUnavailable, "internal scheduler key is not configured", "not_configured")
+		return false
+	}
 	provided := strings.TrimSpace(r.Header.Get("X-Image-Scheduler-Key"))
-	if expected != "" && provided != expected {
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid internal scheduler key", "authentication_error")
 		return false
 	}

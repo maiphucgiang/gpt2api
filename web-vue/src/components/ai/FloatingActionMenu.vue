@@ -3,7 +3,7 @@
     <Button
       v-if="triggerVariant === 'button'"
       variant="outline"
-      :size="size === 'xs' ? 'xs' : 'sm'"
+      size="sm"
       :disabled="disabled"
       :root-class="triggerRootClass"
       :aria-expanded="open"

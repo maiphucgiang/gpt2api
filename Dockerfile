@@ -1,6 +1,10 @@
 FROM node:22-alpine AS web-build
 WORKDIR /src/web-vue
-RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
+# Corepack caches only the wrapper; prime the verified native binary separately.
+RUN corepack enable \
+    && timeout 120 corepack prepare pnpm@12.5.1 --activate \
+    && test "$(timeout 120 pnpm --version)" = "12.5.1"
+ENV COREPACK_ENABLE_NETWORK=0
 COPY web-vue/package.json web-vue/pnpm-lock.yaml web-vue/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY VERSION CHANGELOG.md /src/

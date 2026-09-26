@@ -61,7 +61,7 @@
         </Button>
         <Button
           size="xs"
-          variant="ghost"
+          variant="outline"
           root-class="text-rose-600 hover:text-rose-700"
           @click="handleRequestDelete"
         >
@@ -102,7 +102,7 @@ const emit = defineEmits<{
   (e: 'toggle-selection', id: string, checked: boolean): void
   (e: 'open-detail', item: SystemLogRow): void
   (e: 'request-delete-log', item: SystemLogRow): void
-  (e: 'image-error', url: string): void
+  (e: 'image-error', event: Event, url: string): void
 }>()
 
 const token = computed(() => tokenLabel(props.item))
@@ -123,7 +123,7 @@ function handleRequestDelete() {
   emit('request-delete-log', props.item)
 }
 
-function handleImageError(url: string) {
-  emit('image-error', url)
+function handleImageError(event: Event, url: string) {
+  emit('image-error', event, url)
 }
 </script>

@@ -466,7 +466,7 @@ func (s *Store) FlushAccounts() error {
 // the lookup key. Keeping this operation in Store avoids a race between a
 // refresh-token rotation and another concurrent account update.
 func (s *Store) RotateAccountTokens(oldToken, newToken, refreshToken, idToken string, fields map[string]any) (map[string]any, []map[string]any, error) {
-	updates := cloneMap(fields)
+	updates := healthyAccountFields(fields)
 	if strings.TrimSpace(newToken) != "" {
 		updates["access_token"] = strings.TrimSpace(newToken)
 	}
@@ -479,25 +479,6 @@ func (s *Store) RotateAccountTokens(oldToken, newToken, refreshToken, idToken st
 	updates["last_token_refresh_at"] = time.Now().UTC().Format(time.RFC3339)
 	updates["last_token_refresh_error"] = nil
 	updates["last_token_refresh_error_at"] = nil
-	updates["invalid_count"] = 0
-	updates["cooldown_until"] = nil
-	updates["next_retry_at"] = nil
-	// A successful remote refresh supersedes every error marker left by an
-	// earlier refresh or request attempt. Keeping any of these fields makes the
-	// admin status endpoint classify an otherwise healthy account as abnormal.
-	for _, key := range []string{
-		"last_refresh_error",
-		"last_refresh_error_at",
-		"last_refresh_warning",
-		"last_refresh_warning_at",
-		"last_error_kind",
-		"last_error_status",
-		"last_error_message",
-		"last_error_at",
-		"status_reason_code",
-	} {
-		updates[key] = nil
-	}
 	return s.UpdateAccount(oldToken, updates)
 }
 
@@ -549,7 +530,11 @@ func (s *Store) scheduleAccountFlushLocked(delay time.Duration) {
 		s.mu.Lock()
 		s.accountsTimer = nil
 		s.mu.Unlock()
-		_ = s.persistRuntimeAccounts()
+		if err := s.persistRuntimeAccounts(); err != nil {
+			s.mu.Lock()
+			s.scheduleAccountFlushLocked(5 * time.Second)
+			s.mu.Unlock()
+		}
 	})
 }
 

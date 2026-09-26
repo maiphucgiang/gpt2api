@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -139,21 +138,11 @@ func (o *OpenAIImage) Generate(ctx context.Context, account accounts.Account, pr
 	if quality == "" {
 		quality = "auto"
 	}
-	if o.Proxy != nil {
-		egressStarted := time.Now()
-		lease, acquireErr := o.Proxy.AcquireImageContext(ctx, account.Fields)
-		notifyOpenAIImageStage(ctx, "egress_acquire_ms", egressStarted)
-		if acquireErr != nil {
-			return nil, fmt.Errorf("wait for image proxy capacity: %w", acquireErr)
-		}
-		if lease.Source == "unavailable" {
-			return nil, fmt.Errorf("no browser-compatible image proxy is available; use http, https, socks5, or socks5h")
-		}
-		ctx = proxyruntime.WithURL(ctx, lease.URL)
-		ctx = proxyruntime.WithImageLease(ctx, lease)
-		notifyOpenAIImageEgress(ctx, lease.URL)
-		defer func() { lease.Release(openAIImageProxyFailure(err)) }()
+	ctx, release, err := o.acquireImageEgress(ctx, account)
+	if err != nil {
+		return nil, err
 	}
+	defer func() { release(err) }()
 	prompt = strings.TrimSpace(prompt) + "\n\n输出图片尺寸为 " + size + "。\n输出图片质量为 " + quality + "。"
 	inputStarted := time.Now()
 	references, err := o.uploadInputs(ctx, account, inputs)
@@ -190,14 +179,18 @@ func (o *OpenAIImage) Generate(ctx context.Context, account accounts.Account, pr
 	proxyruntime.ObserveImageLeaseStage(ctx, time.Since(stageStarted), openAIImageSlowPrepare)
 
 	stageStarted = time.Now()
-	conversationID, imageRefs, err := o.start(ctx, account, requirements, conduit, prompt, model, size, quality, references)
+	checkpoint := newImageCheckpoint(inputs, references)
+	conversationID, imageRefs, err := o.start(ctx, account, requirements, conduit, prompt, model, size, quality, references, func(id string) error {
+		checkpoint.ConversationID = id
+		return notifyImageCheckpoint(ctx, account, checkpoint)
+	})
 	if err != nil {
-		return nil, err
+		return nil, &ImageExecutionError{Stage: "submit", Checkpoint: checkpoint, Err: err}
 	}
 	notifyOpenAIImageStage(ctx, "generation_start_ms", stageStarted)
 	notifyOpenAIImageStage(ctx, "conversation_stream_ms", stageStarted)
 	if conversationID == "" && len(imageRefs) == 0 {
-		return nil, fmt.Errorf("OpenAI image stream returned no conversation id")
+		return nil, &ImageExecutionError{Stage: "submit", Checkpoint: checkpoint, Err: errors.New("OpenAI image stream returned no conversation id")}
 	}
 	// The create-stream echoes the uploaded input asset pointers before the
 	// image is ready. Those pointers are not generated results, so when a
@@ -206,69 +199,15 @@ func (o *OpenAIImage) Generate(ctx context.Context, account accounts.Account, pr
 		stageStarted = time.Now()
 		imageRefs, err = o.pollConversation(ctx, account, conversationID)
 		if err != nil {
-			return nil, err
+			return nil, &ImageExecutionError{Stage: "poll", Checkpoint: checkpoint, Err: err}
 		}
 		notifyOpenAIImageStage(ctx, "resolve_ms", stageStarted)
 	}
-	if len(imageRefs) == 0 {
-		return nil, fmt.Errorf("OpenAI image generation completed without image files")
+	results, err = o.downloadImageResults(ctx, account, checkpoint, imageRefs)
+	if err != nil {
+		return nil, &ImageExecutionError{Stage: "download", Checkpoint: checkpoint, Err: err}
 	}
-	results = make([]ImageResult, 0, len(imageRefs))
-	seen := map[string]bool{}
-	inputFileIDs := map[string]bool{}
-	inputContentHashes := map[[sha256.Size]byte]bool{}
-	var lastDownloadErr error
-	for _, ref := range references {
-		if ref.FileID != "" {
-			inputFileIDs[ref.FileID] = true
-		}
-	}
-	for _, input := range inputs {
-		if len(input.Data) > 0 {
-			inputContentHashes[sha256.Sum256(input.Data)] = true
-		}
-	}
-	// Upstream may return the uploaded input assets together with generated
-	// assets, and some responses use different pointer forms for the same
-	// input. Generated assets are emitted after the inputs, so resolve newest
-	// references first; the input-ID filter below still removes exact echoes.
-	for index := len(imageRefs) - 1; index >= 0; index-- {
-		imageRef := imageRefs[index]
-		fileID := strings.TrimPrefix(imageRef, "file-service://")
-		// The upstream SSE/poll response can echo uploaded reference assets.
-		// Those are inputs, not generated outputs, and must never be returned or
-		// persisted in the generated-image gallery.
-		if imageRef == "" || seen[imageRef] || inputFileIDs[fileID] {
-			continue
-		}
-		seen[imageRef] = true
-		downloadStarted := time.Now()
-		raw, mime, err := o.downloadImageRefWithRetry(ctx, account, conversationID, imageRef)
-		if err != nil {
-			lastDownloadErr = err
-			continue
-		}
-		// Some upstream replies mark echoed product/reference images as tool
-		// assets. Byte-identical content is still an input, never a result.
-		if inputContentHashes[sha256.Sum256(raw)] {
-			continue
-		}
-		notifyOpenAIImageStage(ctx, "download_ms", downloadStarted)
-		proxyruntime.ObserveImageLeaseStage(ctx, time.Since(downloadStarted), openAIImageSlowDownload)
-		results = append(results, ImageResult{
-			Base64: base64.StdEncoding.EncodeToString(raw),
-			MIME:   mime,
-		})
-	}
-	if len(results) > 0 {
-		notifyOpenAIImageStage(ctx, "total_ms", inputStarted)
-	}
-	if len(results) == 0 {
-		if lastDownloadErr != nil {
-			return nil, lastDownloadErr
-		}
-		return nil, fmt.Errorf("OpenAI image generation returned no downloadable files")
-	}
+	notifyOpenAIImageStage(ctx, "total_ms", inputStarted)
 	return results, nil
 }
 
@@ -498,7 +437,7 @@ func (o *OpenAIImage) prepare(ctx context.Context, account accounts.Account, req
 	return token, nil
 }
 
-func (o *OpenAIImage) start(ctx context.Context, account accounts.Account, requirements openAIRequirements, conduit, prompt, model, size, quality string, references []openAIImageReference) (string, []string, error) {
+func (o *OpenAIImage) start(ctx context.Context, account accounts.Account, requirements openAIRequirements, conduit, prompt, model, size, quality string, references []openAIImageReference, checkpoint func(string) error) (string, []string, error) {
 	parts := make([]any, 0, len(references)+1)
 	attachments := make([]any, 0, len(references))
 	for _, ref := range references {
@@ -561,16 +500,27 @@ func (o *OpenAIImage) start(ctx context.Context, account accounts.Account, requi
 	defer response.Body.Close()
 	conversationID := ""
 	fileIDs := []string{}
+	var checkpointErr error
+	lastConversationID := ""
 	err = scanOpenAISSE(response.Body, func(raw []byte) bool {
 		var value any
 		if json.Unmarshal(raw, &value) != nil {
 			return false
 		}
 		collectOpenAIImageRefs(value, &conversationID, &fileIDs)
+		if conversationID != "" && conversationID != lastConversationID {
+			lastConversationID = conversationID
+			if checkpointErr = checkpoint(conversationID); checkpointErr != nil {
+				return true
+			}
+		}
 		return false
 	})
+	if checkpointErr != nil {
+		return conversationID, uniqueStrings(fileIDs), checkpointErr
+	}
 	if err != nil {
-		return "", nil, err
+		return conversationID, uniqueStrings(fileIDs), err
 	}
 	return conversationID, uniqueStrings(fileIDs), nil
 }

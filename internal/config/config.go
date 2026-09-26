@@ -53,6 +53,9 @@ type Config struct {
 	ChatRetryCodes         map[int]bool
 	ImageAccountLimit      int
 	ImageMaxConcurrency    int
+	ImageTaskWorkers       int
+	ImageTaskQueueSize     int
+	ImageTaskRetention     time.Duration
 	ImageRetentionDays     int
 	ImageCleanupInterval   time.Duration
 }
@@ -172,6 +175,9 @@ func Load(root string) (Config, error) {
 		ChatRetryCodes:         parseStatusCodes(env("GO_CHAT_RETRY_CODES", "401,403,429,500,502,503,504")),
 		ImageAccountLimit:      imageAccountConcurrency,
 		ImageMaxConcurrency:    imageMaxConcurrency,
+		ImageTaskWorkers:       min(32, max(1, envInt("GO_IMAGE_TASK_WORKERS", 2))),
+		ImageTaskQueueSize:     min(4096, max(1, envInt("GO_IMAGE_TASK_QUEUE_SIZE", 64))),
+		ImageTaskRetention:     time.Duration(min(720, max(1, envInt("GO_IMAGE_TASK_RETENTION_HOURS", 24)))) * time.Hour,
 		ImageRetentionDays:     imageRetentionDays,
 		ImageCleanupInterval:   time.Duration(imageCleanupIntervalSeconds) * time.Second,
 	}

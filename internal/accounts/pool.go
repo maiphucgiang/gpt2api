@@ -73,6 +73,15 @@ func (p *Pool) ReserveMatching(ctx context.Context, pools []string, excluded map
 // ReserveMatchingLimit waits when every matching account is at its concurrency
 // limit. A non-positive limit preserves the legacy least-busy behavior.
 func (p *Pool) ReserveMatchingLimit(ctx context.Context, pools []string, excluded map[string]bool, match func(Account) bool, maxInflight int) (*Lease, error) {
+	return p.reserveMatching(ctx, pools, excluded, match, maxInflight, false)
+}
+
+// ReserveExisting retrieves accepted work even after its generation quota is exhausted.
+func (p *Pool) ReserveExisting(ctx context.Context, match func(Account) bool, maxInflight int) (*Lease, error) {
+	return p.reserveMatching(ctx, nil, nil, match, maxInflight, true)
+}
+
+func (p *Pool) reserveMatching(ctx context.Context, pools []string, excluded map[string]bool, match func(Account) bool, maxInflight int, retrieval bool) (*Lease, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -98,10 +107,18 @@ func (p *Pool) ReserveMatchingLimit(ctx context.Context, pools []string, exclude
 		}
 		for offset := 0; offset < len(p.accounts); offset++ {
 			account := p.accounts[(start+offset)%len(p.accounts)]
-			if excluded[account.Token] || (match != nil && !match(account)) || !p.available(account, pools, now) {
+			if excluded[account.Token] || (match != nil && !match(account)) {
 				continue
 			}
-			inflight := p.inflight[account.Token]
+			if retrieval {
+				status := strings.ToLower(stringValue(account.Fields["status"]))
+				if !boolValue(account.Fields["enabled"], true) || status == "disabled" || status == "auto_disabled" || status == "禁用" {
+					continue
+				}
+			} else if !p.available(account, pools, now) {
+				continue
+			}
+			inflight := p.inflight[accountLeaseKey(account)]
 			if maxInflight > 0 && inflight >= maxInflight {
 				capacityBlocked = true
 				continue
@@ -129,10 +146,17 @@ func (p *Pool) ReserveMatchingLimit(ctx context.Context, pools []string, exclude
 		// Starting at a rotating offset preserves tie fairness without building
 		// a temporary candidate list for every request.
 		p.next++
-		p.inflight[selected.Token]++
+		p.inflight[accountLeaseKey(selected)]++
 		p.mu.Unlock()
 		return &Lease{Account: selected, pool: p}, nil
 	}
+}
+
+func accountLeaseKey(account Account) string {
+	if id := store.AccountID(account.Fields); id != "" {
+		return "id:" + id
+	}
+	return "token:" + account.Token
 }
 
 func (p *Pool) Release(lease *Lease) {
@@ -142,10 +166,11 @@ func (p *Pool) Release(lease *Lease) {
 	lease.once.Do(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		if p.inflight[lease.Account.Token] <= 1 {
-			delete(p.inflight, lease.Account.Token)
+		key := accountLeaseKey(lease.Account)
+		if p.inflight[key] <= 1 {
+			delete(p.inflight, key)
 		} else {
-			p.inflight[lease.Account.Token]--
+			p.inflight[key]--
 		}
 		p.signalLocked()
 	})
@@ -161,6 +186,9 @@ func (p *Pool) Feedback(account Account, status int, err error) {
 		return
 	}
 	if current, recordErr := p.repository.RecordAccountResult(account.Token, store.AccountID(account.Fields), status >= 200 && status < 300 && err == nil); recordErr == nil {
+		if stringValue(current["access_token"]) != account.Token {
+			return // Old credentials can contribute counts, but not current health markers.
+		}
 		account.Token = stringValue(current["access_token"])
 		account.Fields = current
 	}

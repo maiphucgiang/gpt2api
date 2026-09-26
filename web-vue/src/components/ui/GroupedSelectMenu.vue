@@ -81,22 +81,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useExclusiveFloatingMenu } from '@/composables/useExclusiveFloatingMenu'
 
-type GroupedSelectOption = {
-  label: string
-  value: string
-  disabled?: boolean
-}
-
-type GroupedSelectGroup = {
-  label?: string
-  options: GroupedSelectOption[]
-}
+import type { GroupedSelectGroup, GroupedSelectOption } from './groupedSelectTypes'
 type FloatingMenuPlacement = 'auto' | 'top' | 'bottom' | 'left' | 'right' | 'up' | 'down'
 
 const props = withDefaults(defineProps<{
   modelValue: string | string[]
-  groups?: GroupedSelectGroup[]
-  options?: GroupedSelectOption[]
+  groups?: readonly GroupedSelectGroup[]
+  options?: readonly GroupedSelectOption[]
   multiple?: boolean
   placeholder?: string
   disabled?: boolean
@@ -133,7 +124,7 @@ const menu = ref<HTMLElement | null>(null)
 const menuPosition = ref({ top: 0, left: 0, width: 0, maxHeight: 0 })
 const { announceOpen } = useExclusiveFloatingMenu(closeMenu, 'grouped-select')
 
-const resolvedGroups = computed<GroupedSelectGroup[]>(() => {
+const resolvedGroups = computed<readonly GroupedSelectGroup[]>(() => {
   if (props.groups?.length) return props.groups
   if (props.options?.length) return [{ options: props.options }]
   return []

@@ -63,7 +63,7 @@
                 </a>
                 <Button
                   size="xs"
-                  variant="ghost"
+                  variant="outline"
                   icon-only
                   root-class="h-7 w-7 shrink-0"
                   title="复制链接"

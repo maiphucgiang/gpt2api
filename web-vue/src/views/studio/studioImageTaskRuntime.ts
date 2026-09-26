@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue'
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
   imageTasksApi,
   taskPrimaryMessage,
@@ -29,7 +29,7 @@ export type StudioImageTaskRuntimeHooks = {
 export type StudioImageTaskRuntimeInput = {
   pageRuntime: PageRuntime
   activeConversation: ComputedRef<StudioConversation | null>
-  conversationNotices: ComputedRef<Record<string, StudioConversationBadgeState>>
+  conversationNotices: Readonly<Ref<Record<string, StudioConversationBadgeState>>>
   conversationLookup: ComputedRef<StudioConversationLookup>
   conversationRuntimeIndex: ComputedRef<StudioConversationRuntimeIndex>
   hooks: StudioImageTaskRuntimeHooks

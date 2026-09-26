@@ -546,7 +546,7 @@ func (s *server) runTask(parent context.Context, id string) {
 			return
 		}
 	}
-	retryable := err != nil && (statusCode == 0 || statusCode == http.StatusTooManyRequests || statusCode >= 500)
+	retryable := retryableTaskError(err, statusCode)
 	if retryable && item.Attempts < s.cfg.MaxAttempts {
 		item.Status = "queued"
 		_ = s.saveTask(parent, item)
@@ -620,19 +620,7 @@ func (s *server) schedulerExecute(ctx context.Context, reservation, callID strin
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-image-scheduler-key", s.cfg.SchedulerKey)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.StatusCode, fmt.Errorf("scheduler execute HTTP %d: %s", resp.StatusCode, string(raw))
-	}
-	return raw, resp.StatusCode, nil
+	return s.executeRequest(req)
 }
 
 func imageModel(payload []byte) string {
@@ -704,19 +692,7 @@ func (s *server) schedulerExecuteEdit(ctx context.Context, reservation, callID s
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("x-image-scheduler-key", s.cfg.SchedulerKey)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.StatusCode, fmt.Errorf("scheduler execute-edit HTTP %d: %s", resp.StatusCode, string(raw))
-	}
-	return raw, resp.StatusCode, nil
+	return s.executeRequest(req)
 }
 func containsFile(files []editFile, target editFile) bool {
 	for _, item := range files {

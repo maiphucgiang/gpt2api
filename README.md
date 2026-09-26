@@ -80,6 +80,9 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 | `GO_IMAGE_TASK_QUEUE_SIZE` | 控制台图片等待容量，默认 64 |
 | `GO_IMAGE_TASK_RETENTION_HOURS` | 控制台终态任务记录保留时间，默认 24 小时 |
 | `GO_IMAGE_SCHEDULER_KEY` | 源码运行的内部调度密钥；Compose 使用 `IMAGE_SCHEDULER_INTERNAL_KEY` 映射 |
+| `GO_BPS_ENABLED` | 启用 BPS 模型与工具调用，默认关闭 |
+| `GO_BPS_BASE_URL` | BPS 上游，默认 `https://bps.openai.com` |
+| `GO_BPS_TIMEOUT_SECONDS` | BPS 请求超时，默认 180 秒，范围 1–900 |
 
 `GO_CONFIG_PATH`、`GO_ACCOUNTS_PATH`、`GO_AUTH_KEYS_PATH`、`GO_REGISTER_PATH` 可覆盖具体路径。默认配置写入 `data/config.json`；首次运行可复制旧根目录 `config.json`，不覆盖已有数据配置。历史认证环境变量仍可作为回退。
 
@@ -118,6 +121,22 @@ CPA 导入会报告新增、重复、类型不支持及失败数量；类型不�
 `stream:true` 按上游增量发送事件，包含事件序号、内容结束及终态；取消会传播到上游，断流或错误不会伪造 `response.completed`。图片模型仍返回图片链接的 Markdown。
 
 当前 Web 后端不支持函数/内置工具、结构化输出、文本模型的图片输入、服务端保存、后台 Responses 或 `previous_response_id`，这些参数明确返回 400；请携带完整历史并使用 `store:false`。采样和输出长度参数兼容接收，但上游不保证执行；`usage` 为估算。
+
+### BPS 模型与 Agent 工具
+
+设置 `GO_BPS_ENABLED=true` 后，模型目录增加 `bsg/gpt-6-astra`、`bsg/gpt-5.6-sol`、`bsg/gpt-5.6-luna`、`bsg/gpt-5.6-terra`；请求与响应均使用带前缀的 ID，调用 BPS 时去掉 `bsg/`。不提供无前缀 BPS 别名；原有 `gpt-5-6-*` 等 Web slug 不变。认证复用账号池中的 ChatGPT JWT 与工作区 ID。
+
+Responses、Chat Completions、Messages 均支持文本与流式工具调用；文本实时转发，工具整批校验并保存原始调用身份后才交给客户端。支持 function、custom 和 namespace 工具；JSON Schema 禁止外部引用，custom 的 grammar 作为模型提示与客户端约束，服务端不解析 Lark。工具代码只回传，不在服务器执行。
+
+BPS 不接受采样和输出长度字段；兼容接收 `temperature`、`top_p`、`max_output_tokens`（Chat/Messages 的 `max_tokens`），移除后由 `X-BPS-Ignored-Parameters` 响应头提示，不能依赖它们限制生成。推理强度支持 `low/medium/high/xhigh`，默认 `medium`；`usage` 使用上游实值。
+
+使用 `store:false` 并发送完整历史，包括工具调用及对应结果；`previous_response_id`、后台响应、结构化输出、内置工具、图片/文件附件暂不支持。`403` 不自动重试，不影响 Web/图片健康状态；凭证到期或首次 `401` 复用已有去重刷新机制。断流不会补造成功，也不重新生成工具调用。
+
+BPS 权限因账号而异；可调用管理接口 `POST /api/accounts/update`，提交 `{"access_token":"账号 ID","bps_enabled":false}`，仅停用该账号的 BPS 调度，不影响 Web/图片。恢复时设为 `true`；不要用真实 AT 代替账号 ID。
+
+工具与会话记录保存在私有 `data/bps_tool_calls.json`，按调用方、模型和原账号隔离，合计最多 256 条、16 MiB、24 小时。保持同一会话的 `prompt_cache_key`；历史过期返回 409，原账号不可用时不切换账号继续执行。关闭 BPS 开关即可撤销新入口，保留该文件供恢复。
+
+协议参考：[excel-codex-bridge v0.5.1](https://github.com/Kaixxrua/excel-codex-bridge/tree/8a277dfcdbb647d2ef4d714e31b6a98260a63a79)。本服务使用 Go 实现，不读取浏览器会话或执行 Office 工具。
 
 ## 验证
 

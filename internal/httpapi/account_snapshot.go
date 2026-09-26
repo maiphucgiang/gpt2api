@@ -23,6 +23,10 @@ func (s *Server) refreshAccountSnapshot(ctx context.Context, ref string) (map[st
 }
 
 func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rotate bool) (map[string]any, error) {
+	return s.refreshAccountSnapshotExpected(ctx, ref, rotate, "")
+}
+
+func (s *Server) refreshAccountSnapshotExpected(ctx context.Context, ref string, rotate bool, expectedToken string) (map[string]any, error) {
 	account, err := s.accountByRef(ref)
 	if err != nil {
 		return nil, err
@@ -36,7 +40,7 @@ func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rot
 			return nil, ctx.Err()
 		case <-flight.done:
 			if rotate && !flight.rotate && flight.err == nil {
-				return s.refreshAccountSnapshotMode(ctx, key, true)
+				return s.refreshAccountSnapshotExpected(ctx, key, true, expectedToken)
 			}
 			return cloneMap(flight.account), flight.err
 		}
@@ -61,6 +65,10 @@ func (s *Server) refreshAccountSnapshotMode(ctx context.Context, ref string, rot
 	if !isOpenAIAccount(accounts.Account{Token: accountToken(account), Fields: account}) {
 		flight.err = errors.New("not a GPT account")
 		return nil, flight.err
+	}
+	if expectedToken != "" && accountToken(account) != expectedToken {
+		flight.account = cloneMap(account)
+		return cloneMap(account), nil
 	}
 	client := s.openAIAccountClient()
 	version := store.CredentialsOf(account)

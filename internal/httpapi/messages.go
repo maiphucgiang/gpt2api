@@ -43,6 +43,11 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "model not found", "invalid_request_error")
 		return
 	}
+	if model.IsBPS(request.Model) {
+		raw, _ := json.Marshal(request)
+		s.bpsMessages(w, r, raw)
+		return
+	}
 	messages := make([]protocol.Message, 0, len(request.Messages)+1)
 	if system := anthropicText(request.System); system != "" {
 		messages = append(messages, protocol.Message{Role: "system", Content: system})

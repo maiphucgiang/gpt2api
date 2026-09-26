@@ -23,6 +23,9 @@ type Config struct {
 	WebUIKey               string
 	UpstreamURL            string
 	UpstreamAPIKey         string
+	BPSEnabled             bool
+	BPSBaseURL             string
+	BPSTimeout             time.Duration
 	OpenAIBaseURL          string
 	OpenAIOAuthURL         string
 	OpenAIAuthBaseURL      string
@@ -147,6 +150,9 @@ func Load(root string) (Config, error) {
 		WebUIKey:               env("GPT2API_WEBUI_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY"))),
 		UpstreamURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("GO_UPSTREAM_URL")), "/"),
 		UpstreamAPIKey:         strings.TrimSpace(os.Getenv("GO_UPSTREAM_API_KEY")),
+		BPSEnabled:             envBool("GO_BPS_ENABLED", false),
+		BPSBaseURL:             strings.TrimRight(env("GO_BPS_BASE_URL", "https://bps.openai.com"), "/"),
+		BPSTimeout:             time.Duration(min(900, max(1, envInt("GO_BPS_TIMEOUT_SECONDS", 180)))) * time.Second,
 		OpenAIBaseURL:          strings.TrimRight(env("GO_OPENAI_BASE_URL", "https://chatgpt.com"), "/"),
 		OpenAIOAuthURL:         env("GO_OPENAI_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"),
 		OpenAIAuthBaseURL:      strings.TrimRight(env("GO_OPENAI_AUTH_BASE_URL", "https://auth.openai.com"), "/"),

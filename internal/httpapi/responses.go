@@ -21,8 +21,13 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 405, "method not allowed", "invalid_request_error")
 		return
 	}
+	var raw json.RawMessage
+	if !decodeJSON(w, r, &raw) {
+		return
+	}
 	var request protocol.ResponsesRequest
-	if !decodeJSON(w, r, &request) {
+	if err := json.Unmarshal(raw, &request); err != nil {
+		writeError(w, 400, "invalid Responses request", "invalid_request_error")
 		return
 	}
 	if strings.TrimSpace(request.Model) == "" {
@@ -32,6 +37,10 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 	route, ok := model.ResolveChat(request.Model)
 	if !ok {
 		writeError(w, 404, "model not found", "invalid_request_error")
+		return
+	}
+	if route.BPS {
+		s.bpsResponses(w, r, raw)
 		return
 	}
 	messages, err := protocol.ParseResponsesInput(request.Input, request.Instructions)

@@ -6,22 +6,26 @@ import (
 )
 
 type Message struct {
-	Role      string `json:"role"`
-	Content   any    `json:"content"`
-	ToolCalls []any  `json:"tool_calls,omitempty"`
+	Role       string `json:"role"`
+	Content    any    `json:"content"`
+	ToolCalls  []any  `json:"tool_calls,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Name       string `json:"name,omitempty"`
 }
 
 type ChatRequest struct {
-	Model           string           `json:"model"`
-	Messages        []Message        `json:"messages"`
-	Stream          bool             `json:"stream"`
-	Size            string           `json:"size,omitempty"`
-	ReasoningEffort string           `json:"reasoning_effort"`
-	Temperature     *float64         `json:"temperature"`
-	TopP            *float64         `json:"top_p"`
-	MaxTokens       *int             `json:"max_tokens"`
-	Tools           []map[string]any `json:"tools"`
-	ToolChoice      any              `json:"tool_choice"`
+	Model             string           `json:"model"`
+	Messages          []Message        `json:"messages"`
+	Stream            bool             `json:"stream"`
+	Size              string           `json:"size,omitempty"`
+	ParallelToolCalls *bool            `json:"parallel_tool_calls,omitempty"`
+	PromptCacheKey    string           `json:"prompt_cache_key,omitempty"`
+	ReasoningEffort   string           `json:"reasoning_effort"`
+	Temperature       *float64         `json:"temperature"`
+	TopP              *float64         `json:"top_p"`
+	MaxTokens         *int             `json:"max_tokens"`
+	Tools             []map[string]any `json:"tools"`
+	ToolChoice        any              `json:"tool_choice"`
 }
 
 type ResponsesRequest struct {

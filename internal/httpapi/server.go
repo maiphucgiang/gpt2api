@@ -23,6 +23,7 @@ import (
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/agentidentity"
 	"github.com/maiphucgiang/gpt2api/internal/auth"
+	"github.com/maiphucgiang/gpt2api/internal/bps"
 	"github.com/maiphucgiang/gpt2api/internal/config"
 	"github.com/maiphucgiang/gpt2api/internal/model"
 	"github.com/maiphucgiang/gpt2api/internal/oauth"
@@ -43,6 +44,9 @@ type Server struct {
 	accountPool             *accounts.Pool
 	openAIImage             *provider.OpenAIImage
 	openAIChat              *provider.OpenAIChat
+	bpsClient               *bps.Client
+	bpsMu                   sync.Mutex
+	bpsCooldowns            map[string]time.Time
 	gptMail                 *provider.GPTMail
 	proxyManager            *proxyruntime.Manager
 	openAILogin             *oauth.OpenAILogin
@@ -107,6 +111,15 @@ func New(cfg config.Config) *Server {
 		monitor:            newRuntimeMonitor(), registerStore: registerruntime.New(cfg.RegisterPath), registerRuntime: registerruntime.NewRuntime(),
 	}
 	server.openAIChat = provider.NewOpenAIChat(server.openAIImage)
+	for i := range server.catalog {
+		if model.IsBPS(server.catalog[i].ID) {
+			server.catalog[i].Enabled = cfg.BPSEnabled
+		}
+	}
+	if cfg.BPSEnabled {
+		server.bpsClient = bps.NewClient(cfg.BPSBaseURL, cfg.BPSTimeout, requestClient.Transport, proxyManager, bps.NewReplay(filepath.Join(cfg.DataDir, "bps_tool_calls.json")))
+		server.bpsCooldowns = map[string]time.Time{}
+	}
 	proxyManager.SetImageNodeResultCallback(server.persistProxyGroupRuntimeResult)
 	server.accountPool.SetInvalidCallback(server.maybeAutoRemoveInvalidAccount)
 	server.loadEditableFileTasks()
@@ -684,6 +697,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, status, map[string]any{
 		"status":              label,
 		"image_tasks":         tasks,
+		"bps":                 map[string]any{"enabled": s.cfg.BPSEnabled, "ready": s.bpsClient != nil && s.bpsClient.Replay.Ready()},
 		"runtime":             "go",
 		"version":             s.cfg.Version,
 		"upstream_configured": s.cfg.UpstreamURL != "",
@@ -766,6 +780,10 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "model not found", "invalid_request_error")
 		return
 	}
+	if route.BPS {
+		s.bpsChatCompletions(w, r, request, request.Stream)
+		return
+	}
 	if route.Image {
 		if request.Stream {
 			s.streamOpenAIImageChat(w, r, request)
@@ -782,6 +800,10 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) completeChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
+	if route.BPS {
+		s.bpsChatCompletions(w, r, request, false)
+		return
+	}
 	if route.Image {
 		s.completeOpenAIImageChat(w, r, request)
 		return
@@ -1236,9 +1258,15 @@ func (s *Server) updateAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "account not found", "not_found")
 		return
 	}
+	if value, present := body["bps_enabled"]; present {
+		if _, valid := value.(bool); !valid {
+			writeError(w, 400, "bps_enabled must be boolean", "invalid_request_error")
+			return
+		}
+	}
 	token := tokens[0]
 	updates := map[string]any{}
-	for _, key := range []string{"type", "source_type", "status", "quota", "proxy", "group_id", "enabled", "email", "user_id", "login_password", "two_factor_secret"} {
+	for _, key := range []string{"type", "source_type", "status", "quota", "proxy", "group_id", "enabled", "bps_enabled", "email", "user_id", "login_password", "two_factor_secret"} {
 		if value, ok := body[key]; ok {
 			updates[key] = value
 		}

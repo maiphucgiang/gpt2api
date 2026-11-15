@@ -21,6 +21,7 @@ import (
 type imageTaskFixture struct {
 	server        *httptest.Server
 	ready         atomic.Bool
+	rateLimited   atomic.Bool
 	submits       atomic.Int32
 	uploads       atomic.Int32
 	wrongAccount  atomic.Bool
@@ -61,6 +62,12 @@ func newImageTaskFixture(t *testing.T) *imageTaskFixture {
 		case strings.HasPrefix(r.URL.Path, "/backend-api/conversation/"):
 			if expected := fixture.expectedToken.Load().(string); expected != "" && r.Header.Get("Authorization") != "Bearer "+expected {
 				fixture.wrongAccount.Store(true)
+			}
+			if fixture.rateLimited.Load() {
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = io.WriteString(w, `{"detail":"slow down"}`)
+				return
 			}
 			if fixture.ready.Load() {
 				writeHTTPAPIGeneratedImageConversation(w, "file_reference", "file_generated")

@@ -283,6 +283,138 @@ func TestOpenAIImagePollingTimeoutIncludesLastTransportError(t *testing.T) {
 	}
 }
 
+func TestReadOpenAIHTTPErrorRetryAfter(t *testing.T) {
+	response := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{"Retry-After": []string{"17"}},
+		Body:       io.NopCloser(strings.NewReader(`{"detail":"slow down"}`)),
+	}
+	err := readOpenAIHTTPError(response, "image conversation")
+	var upstream *protocol.UpstreamError
+	if !errors.As(err, &upstream) || upstream.RetryAfter != 17*time.Second {
+		t.Fatalf("Retry-After was not preserved: %#v", upstream)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if got := parseOpenAIRetryAfter(now.Add(90*time.Second).Format(http.TimeFormat), now); got != 90*time.Second {
+		t.Fatalf("HTTP-date Retry-After = %v", got)
+	}
+	for _, value := range []string{"", "0", "invalid", now.Add(-time.Minute).Format(http.TimeFormat)} {
+		if got := parseOpenAIRetryAfter(value, now); got != 0 {
+			t.Fatalf("Retry-After %q = %v", value, got)
+		}
+	}
+}
+
+func TestOpenAIImagePollBackoff(t *testing.T) {
+	for consecutive := 1; consecutive <= 6; consecutive++ {
+		base := 5 * time.Second * time.Duration(1<<min(consecutive-1, 4))
+		if base > time.Minute {
+			base = time.Minute
+		}
+		got := openAIImagePollBackoff(5*time.Second, consecutive)
+		if got < base || got > min(time.Minute, base+base/4) {
+			t.Fatalf("backoff %d = %v, base %v", consecutive, got, base)
+		}
+	}
+}
+
+func TestOpenAIImagePollingRateLimitBackoffAndRecovery(t *testing.T) {
+	const fileID = "file_00000000999999999999999999999999"
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/backend-api/conversation/conversation-rate-limit" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if polls.Add(1) <= 2 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = io.WriteString(w, `{"detail":"slow down"}`)
+			return
+		}
+		writeGeneratedImageConversation(w, fileID)
+	}))
+	defer server.Close()
+
+	client := NewOpenAIImage(server.URL, server.Client(), nil, 2*time.Second)
+	client.pollInterval = time.Millisecond
+	var retryWaits []time.Duration
+	ctx := WithOpenAIImageStage(context.Background(), func(metric string, elapsed time.Duration) {
+		if metric == "retry_wait_ms" {
+			retryWaits = append(retryWaits, elapsed)
+		}
+	})
+	refs, err := client.pollConversation(ctx, accounts.Account{}, "conversation-rate-limit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0] != fileID || polls.Load() != 3 {
+		t.Fatalf("unexpected recovery: refs=%v polls=%d", refs, polls.Load())
+	}
+	if len(retryWaits) != 2 || retryWaits[0] < time.Millisecond || retryWaits[1] < 2*time.Millisecond {
+		t.Fatalf("rate-limit backoff was not observed: %v", retryWaits)
+	}
+}
+
+func TestOpenAIImagePollingCancellationPreservesRateLimit(t *testing.T) {
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		polls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"detail":"slow down"}`)
+	}))
+	defer server.Close()
+
+	client := NewOpenAIImage(server.URL, server.Client(), nil, 5*time.Second)
+	client.pollInterval = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	ctx = WithOpenAIImageStage(ctx, func(metric string, _ time.Duration) {
+		if metric == "retry_wait_ms" {
+			cancel()
+		}
+	})
+	_, err := client.pollConversation(ctx, accounts.Account{}, "conversation-rate-limit")
+	var upstream *protocol.UpstreamError
+	if !errors.As(err, &upstream) || upstream.Status != http.StatusTooManyRequests {
+		t.Fatalf("cancellation lost the upstream rate limit: %v", err)
+	}
+	if errors.Is(err, context.Canceled) {
+		t.Fatal("rate-limited result was reduced to client cancellation")
+	}
+	if !ImageSubmissionUncertain(&ImageExecutionError{Stage: "poll", Checkpoint: ImageCheckpoint{ConversationID: "conversation-rate-limit"}, Err: err}) {
+		t.Fatal("accepted generation must not be replayed")
+	}
+	if polls.Load() != 1 {
+		t.Fatalf("unexpected poll count %d", polls.Load())
+	}
+}
+
+func TestOpenAIImagePollingRateLimitDoesNotRetryProxy(t *testing.T) {
+	var attempts atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		attempts.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"detail":"slow down"}`)),
+			Request:    request,
+		}, nil
+	})}
+	manager := proxyruntime.NewManager("", nil)
+	manager.ConfigureImageGroups("group:images", []proxyruntime.GroupConfig{{ID: "images", Enabled: true, Nodes: []proxyruntime.NodeConfig{
+		{ID: "current", URL: "http://current.invalid:8080", Enabled: true},
+		{ID: "stable", URL: "http://stable.invalid:8080", Enabled: true, RuntimeSuccesses: 3},
+	}}})
+	imageClient := NewOpenAIImage("https://example.invalid", client, manager, time.Second)
+	_, err := imageClient.pollConversationOnce(proxyruntime.WithURL(context.Background(), "http://current.invalid:8080"), accounts.Account{}, "conversation-rate-limit")
+	var upstream *protocol.UpstreamError
+	if !errors.As(err, &upstream) || upstream.Status != http.StatusTooManyRequests || attempts.Load() != 1 {
+		t.Fatalf("429 caused a duplicate proxy request: attempts=%d err=%v", attempts.Load(), err)
+	}
+}
+
 func TestOpenAIImageTerminalErrorRecognizesUpstreamModeration(t *testing.T) {
 	err := openAIImageTerminalError(map[string]any{
 		"mapping": map[string]any{

@@ -3,6 +3,7 @@ package protocol
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 type Message struct {
@@ -47,9 +48,10 @@ type ResponsesRequest struct {
 }
 
 type UpstreamError struct {
-	Status  int
-	Message string
-	Body    string
+	Status     int
+	Message    string
+	Body       string
+	RetryAfter time.Duration
 }
 
 func (e *UpstreamError) Error() string { return e.Message }

@@ -101,6 +101,34 @@ func TestInternalAcceptedGenerationFailureDisablesReplay(t *testing.T) {
 	}
 }
 
+func TestInternalPollingRateLimitDoesNotReplaySubmission(t *testing.T) {
+	t.Setenv("GO_IMAGE_SCHEDULER_KEY", "scheduler-fixture")
+	fixture := newImageTaskFixture(t)
+	fixture.rateLimited.Store(true)
+	cfg := adminTestConfig(t.TempDir())
+	cfg.OpenAIBaseURL = fixture.server.URL
+	cfg.RequestTimeout = 60 * time.Millisecond
+	cfg.ChatMaxRetries = 2
+	server := New(cfg)
+	defer server.Close()
+	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "origin", "access_token": "at-a", "source_type": "chatgpt_web"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := reserveFixtureImage(t, server)
+	response := internalImageRequest(server, "/internal/image-scheduler/"+id+"/execute", strings.NewReader(`{"request":{"prompt":"fixture","model":"gpt-image-2"}}`), "application/json")
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("X-Image-Submission-Uncertain") != "true" || fixture.submits.Load() != 1 {
+		t.Fatalf("rate-limited poll replayed submission: status=%d submissions=%d body=%s", response.Code, fixture.submits.Load(), response.Body.String())
+	}
+	items, err := server.store.AccountList()
+	if err != nil || len(items) != 1 {
+		t.Fatalf("load account feedback: %v %#v", err, items)
+	}
+	if intValue(items[0]["last_error_status"]) != http.StatusTooManyRequests || stringValue(items[0]["cooldown_until"]) == "" {
+		t.Fatalf("429 cooldown was not persisted: %#v", items[0])
+	}
+}
+
 func TestUnconfiguredInternalSchedulerFailsClosed(t *testing.T) {
 	t.Setenv("GO_IMAGE_SCHEDULER_KEY", "")
 	server := New(adminTestConfig(t.TempDir()))

@@ -762,6 +762,7 @@ func (s *Server) monitorOpenAIImageContext(r *http.Request, ctx context.Context)
 			"generation_start_ms":     {"image_starting_generation", 60},
 			"conversation_stream_ms":  {"image_generating", 70},
 			"resolve_ms":              {"image_resolving", 85},
+			"retry_wait_ms":           {"image_poll_backoff", 84},
 			"download_ms":             {"image_download_done", 95},
 			"total_ms":                {"image_single_done", 99},
 		}

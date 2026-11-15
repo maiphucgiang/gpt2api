@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
 	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
@@ -223,7 +224,7 @@ func (p *Pool) Feedback(account Account, status int, err error) {
 	if status == 401 {
 		cooldown = 10 * time.Minute
 	} else if status == 429 {
-		if parsed := retryAfterDuration(err); parsed > 0 {
+		if parsed := RetryAfterDuration(err); parsed > 0 {
 			cooldown = parsed
 		}
 	}
@@ -278,9 +279,14 @@ func isRequestMarkedAbnormal(fields map[string]any) bool {
 		reason == "auth_invalid" || reason == "account_invalid" || kind == "auth_invalid"
 }
 
-func retryAfterDuration(err error) time.Duration {
+// RetryAfterDuration reads the upstream retry window from headers or response text.
+func RetryAfterDuration(err error) time.Duration {
 	if err == nil {
 		return 0
+	}
+	var upstream *protocol.UpstreamError
+	if errors.As(err, &upstream) && upstream.RetryAfter > 0 {
+		return upstream.RetryAfter
 	}
 	matches := retryAfterPattern.FindStringSubmatch(err.Error())
 	if len(matches) != 3 {

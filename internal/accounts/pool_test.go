@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/protocol"
 	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
@@ -56,6 +57,13 @@ func TestPoolFeedbackHonorsUpstreamRetryWindow(t *testing.T) {
 	}
 	if len(items) != 1 || items[0]["cooldown_until"] == nil || items[0]["cooldown_until"] == "" {
 		t.Fatalf("expected persisted cooldown_until, got %#v", items)
+	}
+}
+
+func TestRetryAfterDurationPrefersUpstreamHeader(t *testing.T) {
+	err := &protocol.UpstreamError{Status: 429, Message: "Please try again in 20 hours.", RetryAfter: 90 * time.Second}
+	if got := RetryAfterDuration(err); got != 90*time.Second {
+		t.Fatalf("RetryAfterDuration = %v", got)
 	}
 }
 

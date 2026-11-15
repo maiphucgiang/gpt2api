@@ -148,7 +148,12 @@ func (s *Server) resumeImageTaskOutput(r *http.Request, ctx context.Context, tas
 	defer func() { s.accountPool.Feedback(lease.Account, upstreamStatusOrOK(err), err) }()
 	s.enrichMonitorAccount(r, lease.Account)
 	ctx = s.monitorOpenAIImageContext(r, ctx)
-	images, err := s.openAIImage.Resume(ctx, lease.Account, output.Checkpoint)
+	var images []provider.ImageResult
+	err = s.runAccountBusiness(ctx, &lease.Account, func() error {
+		var callErr error
+		images, callErr = s.openAIImage.Resume(ctx, lease.Account, output.Checkpoint)
+		return callErr
+	}, func(error) bool { return true })
 	if err != nil {
 		return nil, err
 	}

@@ -46,3 +46,4 @@ docs/*.md
 services/checkout_protocol/proxy_state.json
 services/checkout_protocol/dumps/
 docker-compose-local.yml
+docker-compose.netcup2.yml

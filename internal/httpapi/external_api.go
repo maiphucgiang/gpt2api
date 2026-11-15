@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -196,25 +197,34 @@ func (s *Server) runCPAImport(pool externalCPAPool, names []string, job map[stri
 	update := func(values map[string]any) { updateJob(job, values); _ = s.updateCPAJob(pool.ID, job) }
 	update(map[string]any{"status": "running"})
 	for _, name := range names {
-		payload, _, err := remoteJSON(remoteClient(true), http.MethodGet, pool.BaseURL+"/v0/management/auth-files/download", map[string]string{"Authorization": "Bearer " + pool.SecretKey, "Accept": "application/json"}, url.Values{"name": []string{name}}, nil)
-		if err != nil {
+		versions, versionErr := s.store.AccountCredentialVersions()
+		if versionErr != nil {
+			appendJobError(job, name, "account store unavailable")
+			job["completed"] = intValue(job["completed"]) + 1
+			update(map[string]any{})
+			continue
+		}
+		payload, err := s.readCPACredential(s.backgroundContext, pool, name)
+		if errors.Is(err, errUnsupportedCPACredential) {
+			job["unsupported"] = intValue(job["unsupported"]) + 1
+		} else if err != nil {
 			appendJobError(job, name, err.Error())
 		} else {
-			added, skipped, addErr := s.importCPACredential(payload)
+			added, refreshed, addErr := s.store.UpsertExternalAccount(payload, versions)
 			if errors.Is(addErr, errUnsupportedCPACredential) {
 				job["unsupported"] = intValue(job["unsupported"]) + 1
 			} else if addErr != nil {
 				appendJobError(job, name, addErr.Error())
 			} else {
 				job["added"] = intValue(job["added"]) + added
-				job["skipped"] = intValue(job["skipped"]) + skipped
+				job["refreshed"] = intValue(job["refreshed"]) + refreshed
 			}
 		}
 		job["completed"] = intValue(job["completed"]) + 1
 		update(map[string]any{})
 	}
 	status := "completed"
-	if intValue(job["added"])+intValue(job["skipped"])+intValue(job["unsupported"]) == 0 {
+	if intValue(job["added"])+intValue(job["refreshed"])+intValue(job["skipped"])+intValue(job["unsupported"]) == 0 {
 		status = "failed"
 	}
 	update(map[string]any{"status": status})
@@ -420,18 +430,7 @@ func (s *Server) updateSubJob(id string, job map[string]any) error {
 }
 
 func subHeaders(item externalSubServer) (map[string]string, error) {
-	if strings.TrimSpace(item.APIKey) != "" {
-		return map[string]string{"x-api-key": item.APIKey, "Accept": "application/json"}, nil
-	}
-	payload, _, err := remoteJSON(remoteClient(item.VerifyTLS), http.MethodPost, item.BaseURL+"/api/v1/auth/login", map[string]string{"Accept": "application/json"}, url.Values{}, map[string]string{"email": item.Email, "password": item.Password})
-	if err != nil {
-		return nil, err
-	}
-	token := recursiveString(payload, "access_token", "accessToken", "token")
-	if token == "" {
-		return nil, errors.New("sub2api login did not return access_token")
-	}
-	return map[string]string{"Authorization": "Bearer " + token, "Accept": "application/json"}, nil
+	return subHeadersContext(context.Background(), item)
 }
 
 func remoteSubGroups(item externalSubServer) ([]map[string]any, error) {
@@ -481,7 +480,7 @@ func remoteSubAccounts(item externalSubServer) ([]map[string]any, error) {
 func (s *Server) runSubImport(item externalSubServer, ids []string, job map[string]any) {
 	update := func(values map[string]any) { updateJob(job, values); _ = s.updateSubJob(item.ID, job) }
 	update(map[string]any{"status": "running"})
-	headers, err := subHeaders(item)
+	headers, err := subHeadersContext(s.backgroundContext, item)
 	if err != nil {
 		for _, id := range ids {
 			appendJobError(job, id, err.Error())
@@ -491,27 +490,29 @@ func (s *Server) runSubImport(item externalSubServer, ids []string, job map[stri
 		return
 	}
 	for _, id := range ids {
-		query := url.Values{"ids": []string{id}, "include_proxies": []string{"false"}}
-		payload, _, fetchErr := remoteJSON(remoteClient(item.VerifyTLS), http.MethodGet, item.BaseURL+"/api/v1/admin/accounts/data", headers, query, nil)
-		token := ""
-		if fetchErr == nil {
-			token = recursiveString(payload, "access_token", "accessToken", "token")
+		versions, versionErr := s.store.AccountCredentialVersions()
+		if versionErr != nil {
+			appendJobError(job, id, "account store unavailable")
+			job["completed"] = intValue(job["completed"]) + 1
+			update(map[string]any{})
+			continue
 		}
-		if fetchErr != nil {
+		payload, fetchErr := s.readSubCredential(s.backgroundContext, item, id, headers)
+		if errors.Is(fetchErr, errUnsupportedCPACredential) {
+			job["unsupported"] = intValue(job["unsupported"]) + 1
+		} else if fetchErr != nil {
 			appendJobError(job, id, fetchErr.Error())
-		} else if token == "" {
-			appendJobError(job, id, "data export missing access_token")
-		} else if added, skipped, _, addErr := s.store.AddAccounts([]string{token}, nil); addErr != nil {
+		} else if added, refreshed, addErr := s.store.UpsertExternalAccount(payload, versions); addErr != nil {
 			appendJobError(job, id, addErr.Error())
 		} else {
 			job["added"] = intValue(job["added"]) + added
-			job["skipped"] = intValue(job["skipped"]) + skipped
+			job["refreshed"] = intValue(job["refreshed"]) + refreshed
 		}
 		job["completed"] = intValue(job["completed"]) + 1
 		update(map[string]any{})
 	}
 	status := "completed"
-	if intValue(job["added"]) == 0 && intValue(job["skipped"]) == 0 {
+	if intValue(job["added"])+intValue(job["refreshed"])+intValue(job["skipped"])+intValue(job["unsupported"]) == 0 {
 		status = "failed"
 	}
 	update(map[string]any{"status": status})

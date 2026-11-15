@@ -20,6 +20,13 @@ export interface Account {
   two_factor_secret?: string
   type?: string
   source_type?: string
+  credential_owner?: string
+  credential_source_id?: string
+  credential_remote_id?: string
+  credential_sync_status?: string
+  credential_sync_error?: string
+  last_credential_sync_at?: string
+  bps_subscription_eligible?: boolean
   agent_identity_status?: string
   agent_runtime_id?: string
   survival_status?: string
@@ -468,6 +475,13 @@ function mapBackendAccount(item: BackendAccount, index: number, usedIds: Set<str
     two_factor_secret: cleanString(item.two_factor_secret),
     type,
     source_type: sourceType,
+    credential_owner: cleanString(item.credential_owner),
+    credential_source_id: cleanString(item.credential_source_id),
+    credential_remote_id: cleanString(item.credential_remote_id),
+    credential_sync_status: cleanString(item.credential_sync_status),
+    credential_sync_error: cleanString(item.credential_sync_error),
+    last_credential_sync_at: cleanString(item.last_credential_sync_at),
+    bps_subscription_eligible: item.bps_subscription_eligible === true,
     agent_identity_status: cleanString(item.agent_identity_status),
     agent_runtime_id: cleanString(item.agent_runtime_id),
     survival_status: cleanString(item.survival_status),

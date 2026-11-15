@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 )
 
 var ErrCredentialsChanged = errors.New("account credentials changed during refresh; retry with current credentials")
@@ -11,10 +13,12 @@ var ErrCredentialsChanged = errors.New("account credentials changed during refre
 // CredentialVersion identifies the credential set, independently of usage counters.
 type CredentialVersion struct {
 	id, accessToken, refreshToken, idToken, refreshedAt string
+	owner, source, remote, workspace                    string
 }
 
 func CredentialsOf(account map[string]any) CredentialVersion {
-	return CredentialVersion{AccountID(account), accountToken(account), credentialField(account, "refresh_token"), credentialField(account, "id_token"), credentialField(account, "last_token_refresh_at")}
+	_, workspace := accountpolicy.Identity(account)
+	return CredentialVersion{AccountID(account), accountToken(account), credentialField(account, "refresh_token"), credentialField(account, "id_token"), credentialField(account, "last_token_refresh_at"), accountpolicy.Owner(account), credentialField(account, "credential_source_id"), credentialField(account, "credential_remote_id"), workspace}
 }
 
 func credentialField(account map[string]any, key string) string {
@@ -47,6 +51,13 @@ func (s *Store) updateAccountIfCredentialsMatch(expected CredentialVersion, upda
 	items, next, ok := s.updatedAccountsLocked(expected.accessToken, updates)
 	if !ok {
 		return nil, ErrCredentialsChanged
+	}
+	if owner, source, remote := credentialField(next, "credential_owner"), credentialField(next, "credential_source_id"), credentialField(next, "credential_remote_id"); (owner == "cpa" || owner == "sub2api") && source != "" && remote != "" {
+		for i, item := range items {
+			if i != index && credentialField(item, "credential_owner") == owner && credentialField(item, "credential_source_id") == source && credentialField(item, "credential_remote_id") == remote {
+				return nil, ErrExternalIdentity
+			}
+		}
 	}
 	if err := writeJSON(s.accountsPath, items); err != nil {
 		if retainCredentials {

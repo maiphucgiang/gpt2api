@@ -32,7 +32,7 @@ func TestOAuthCheckpointPrecedesFailingProfileProbe(t *testing.T) {
 	cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 	server := New(cfg)
 	defer server.Close()
-	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "codex", "access_token": "old-at", "refresh_token": "old-rt", "id_token": "old-id", "quota": 17, "success": 9, "status": "正常"}})
+	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "oauth_login", "access_token": "old-at", "refresh_token": "old-rt", "id_token": "old-id", "quota": 17, "success": 9, "status": "正常"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestCancellationAfterOAuthKeepsCheckpoint(t *testing.T) {
 	cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 	server := New(cfg)
 	defer server.Close()
-	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "codex", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}})
+	_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "oauth_login", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCredentialChangesRejectStaleRefreshResults(t *testing.T) {
 			cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 			server := New(cfg)
 			defer server.Close()
-			_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "codex", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}})
+			_, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "oauth_login", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,7 +177,7 @@ func TestOAuthCheckpointWriteFailureKeepsRotatedCredentialsForRecovery(t *testin
 	cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 	server := New(cfg)
 	defer server.Close()
-	if _, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "codex", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}}); err != nil {
+	if _, _, _, err := server.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "oauth_login", "access_token": "old-at", "refresh_token": "old-rt", "quota": 17}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(cfg.AccountsPath); err != nil {

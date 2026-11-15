@@ -52,6 +52,7 @@ func Catalog() []Spec {
 		{"gpt-5-mini", "GPT-5 Mini", "openai", created, Chat, true},
 		{"gpt-image-2", "GPT Image 2", "openai-compatible", created, Image, true},
 		{"gpt-image-2.5", "GPT Image 2.5", "openai-compatible", created, Image | ImageEdit, true},
+		{"gpt-image-2.6", "GPT Image 2.6", "openai-compatible", created, Image | ImageEdit, true},
 	}
 	return items
 }

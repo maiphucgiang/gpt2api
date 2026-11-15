@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/config"
 	"github.com/maiphucgiang/gpt2api/internal/protocol"
 	"github.com/maiphucgiang/gpt2api/internal/provider"
@@ -31,6 +32,34 @@ func TestValidOpenAIImageSizeAcceptsArbitraryDimensions(t *testing.T) {
 	for _, value := range []string{"0x100", "abc", "100"} {
 		if validOpenAIImageSize(value) {
 			t.Fatalf("accepted %s", value)
+		}
+	}
+}
+
+func TestOpenAIImageResolvePreservesGIF(t *testing.T) {
+	raw, err := base64.StdEncoding.DecodeString("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := adminTestConfig(t.TempDir())
+	server := New(cfg)
+	defer server.Close()
+	client := provider.NewOpenAIImage("https://example.com", nil, nil, time.Second)
+
+	for _, mimeType := range []string{"image/gif", "application/octet-stream"} {
+		_, localURL, err := client.Resolve(context.Background(), accounts.Account{}, provider.ImageResult{
+			Base64: base64.StdEncoding.EncodeToString(raw), MIME: mimeType,
+		}, "url", cfg.ImageDataDir, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, localURL, nil))
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/gif" {
+			t.Fatalf("GIF served with status=%d content-type=%q", response.Code, response.Header().Get("Content-Type"))
+		}
+		if !bytes.Equal(response.Body.Bytes(), raw) {
+			t.Fatal("GIF bytes changed during persistence")
 		}
 	}
 }

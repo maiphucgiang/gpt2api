@@ -22,8 +22,8 @@ func normalizeCPACredential(value map[string]any) (map[string]any, error) {
 	if token == "" {
 		return nil, errors.New("missing access_token")
 	}
-	account := map[string]any{"access_token": token, "source_type": "codex", "credential_provider": "codex", "enabled": true, "status": "正常", "image_quota_unknown": true}
-	for _, key := range []string{"refresh_token", "id_token", "account_id", "email", "expired", "last_refresh"} {
+	account := map[string]any{"access_token": token, "source_type": "codex", "credential_provider": "codex", "credential_owner": "external_unbound", "credential_sync_status": "unbound", "enabled": true, "status": "正常", "image_quota_unknown": true}
+	for _, key := range []string{"id_token", "account_id", "chatgpt_account_id", "email", "expired", "expires_at", "last_refresh"} {
 		if text := strings.TrimSpace(stringValue(value[key])); text != "" {
 			account[key] = text
 		}

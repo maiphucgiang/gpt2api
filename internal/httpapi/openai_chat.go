@@ -32,7 +32,11 @@ func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, requ
 			break
 		}
 		s.enrichMonitorAccount(r, lease.Account)
-		text, thinking, err = s.openAIChat.Complete(r.Context(), lease.Account, request)
+		err = s.runAccountBusiness(r.Context(), &lease.Account, func() error {
+			var callErr error
+			text, thinking, callErr = s.openAIChat.Complete(r.Context(), lease.Account, request)
+			return callErr
+		}, func(error) bool { return true })
 		s.accountPool.Release(lease)
 		if err != nil {
 			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
@@ -84,27 +88,29 @@ func (s *Server) streamOpenAIChat(w http.ResponseWriter, r *http.Request, reques
 			break
 		}
 		s.enrichMonitorAccount(r, lease.Account)
-		err = s.openAIChat.Stream(r.Context(), lease.Account, request, func(event provider.OpenAIChatEvent) error {
-			if event.Text == "" && event.Thinking == "" {
+		err = s.runAccountBusiness(r.Context(), &lease.Account, func() error {
+			return s.openAIChat.Stream(r.Context(), lease.Account, request, func(event provider.OpenAIChatEvent) error {
+				if event.Text == "" && event.Thinking == "" {
+					return nil
+				}
+				if !emitted {
+					writeSSE(w, map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": ""}}}})
+					emitted = true
+				}
+				delta := map[string]any{}
+				if event.Text != "" {
+					delta["content"] = event.Text
+				}
+				if event.Thinking != "" && request.ReasoningEffort != "none" {
+					delta["reasoning_content"] = event.Thinking
+				}
+				writeSSE(w, map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": delta}}})
+				if flusher != nil {
+					flusher.Flush()
+				}
 				return nil
-			}
-			if !emitted {
-				writeSSE(w, map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": ""}}}})
-				emitted = true
-			}
-			delta := map[string]any{}
-			if event.Text != "" {
-				delta["content"] = event.Text
-			}
-			if event.Thinking != "" && request.ReasoningEffort != "none" {
-				delta["reasoning_content"] = event.Thinking
-			}
-			writeSSE(w, map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": request.Model, "choices": []any{map[string]any{"index": 0, "delta": delta}}})
-			if flusher != nil {
-				flusher.Flush()
-			}
-			return nil
-		})
+			})
+		}, func(error) bool { return !emitted })
 		s.accountPool.Release(lease)
 		if err != nil {
 			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
@@ -180,14 +186,18 @@ func (s *Server) completeOpenAIImageChat(w http.ResponseWriter, r *http.Request,
 	s.stageRequestMonitor(r, "image_getting_account", 35, nil)
 	for attempt := 0; attempt <= s.cfg.ChatMaxRetries; attempt++ {
 		accountStarted := time.Now()
-		lease, err := s.accountPool.ReserveMatchingLimit(r.Context(), []string{"basic", "super", "heavy"}, excluded, isOpenAIAccount, s.cfg.ImageAccountLimit)
+		lease, err := s.reserveOpenAIImageAccount(r.Context(), excluded, size)
 		if err != nil {
 			lastErr = err
 			break
 		}
 		s.enrichMonitorAccount(r, lease.Account)
 		s.stageRequestMonitor(r, "image_getting_account", 35, map[string]any{"account_wait_ms": time.Since(accountStarted).Milliseconds()})
-		images, err = s.openAIImage.Generate(imageContext, lease.Account, prompt, request.Model, size, "auto", inputs)
+		err = s.runAccountBusiness(imageContext, &lease.Account, func() error {
+			var callErr error
+			images, callErr = s.openAIImage.Generate(imageContext, lease.Account, prompt, request.Model, size, "auto", inputs)
+			return callErr
+		}, func(err error) bool { return !provider.ImageSubmissionUncertain(err) })
 		selected = lease.Account
 		s.accountPool.Release(lease)
 		if err != nil {

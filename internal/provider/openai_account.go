@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	proxyruntime "github.com/maiphucgiang/gpt2api/internal/proxy"
 )
 
@@ -111,6 +112,12 @@ func (c *OpenAIAccountClient) RefreshAccessToken(ctx context.Context, account ma
 func (c *OpenAIAccountClient) RefreshWithCheckpoint(ctx context.Context, account map[string]any, force bool, checkpoint func(AccountRefreshResult) error) (AccountRefreshResult, error) {
 	access := aiString(account, "access_token", "accessToken", "token")
 	refresh := aiString(account, "refresh_token")
+	if accountpolicy.External(account) {
+		if force {
+			return AccountRefreshResult{}, errors.New("externally managed credentials must be synchronized from their source")
+		}
+		refresh = ""
+	}
 	result := AccountRefreshResult{AccessToken: access}
 	if access == "" {
 		return result, errors.New("access_token is required")
@@ -150,6 +157,12 @@ func (c *OpenAIAccountClient) RefreshWithCheckpoint(ctx context.Context, account
 }
 
 func (c *OpenAIAccountClient) fetchUserInfo(ctx context.Context, accessToken string, account map[string]any) (map[string]any, error) {
+	current := make(map[string]any, len(account)+1)
+	for key, value := range account {
+		current[key] = value
+	}
+	current["access_token"] = accessToken
+	account = current
 	me, err := c.getMe(ctx, accessToken, account)
 	if err != nil {
 		return nil, err
@@ -164,7 +177,7 @@ func (c *OpenAIAccountClient) fetchUserInfo(ctx context.Context, accessToken str
 	}
 	limits, _ := init["limits_progress"].([]any)
 	quota, restoreAt, unknown := extractImageQuota(limits)
-	planType := aiString(defaultAccount, "plan_type")
+	planType := strings.ToLower(aiString(defaultAccount, "plan_type"))
 	if planType == "" {
 		planType = "free"
 	}
@@ -172,7 +185,7 @@ func (c *OpenAIAccountClient) fetchUserInfo(ctx context.Context, accessToken str
 	if !(unknown && !strings.EqualFold(planType, "free")) && quota == 0 {
 		status = "限流"
 	}
-	return map[string]any{
+	fields := map[string]any{
 		"email":               me["email"],
 		"user_id":             me["id"],
 		"type":                planType,
@@ -182,7 +195,11 @@ func (c *OpenAIAccountClient) fetchUserInfo(ctx context.Context, accessToken str
 		"default_model_slug":  init["default_model_slug"],
 		"restore_at":          restoreAt,
 		"status":              status,
-	}, nil
+	}
+	for key, value := range subscriptionFields(defaultAccount, account) {
+		fields[key] = value
+	}
+	return fields, nil
 }
 
 func (c *OpenAIAccountClient) getMe(ctx context.Context, token string, account map[string]any) (map[string]any, error) {
@@ -201,11 +218,25 @@ func (c *OpenAIAccountClient) getDefaultAccount(ctx context.Context, token strin
 		return nil, err
 	}
 	accounts, _ := value["accounts"].(map[string]any)
+	_, workspace := accountpolicy.Identity(account)
+	for key, raw := range accounts {
+		wrapper, _ := raw.(map[string]any)
+		candidate, _ := wrapper["account"].(map[string]any)
+		id := aiString(candidate, "account_id", "id")
+		if candidate != nil && workspace != "" && (key == workspace || id == workspace) {
+			candidate["entitlement"] = wrapper["entitlement"]
+			return candidate, nil
+		}
+	}
 	defaultValue, _ := accounts["default"].(map[string]any)
 	result, _ := defaultValue["account"].(map[string]any)
 	if result == nil {
 		result = map[string]any{}
 	}
+	if workspace != "" && aiString(result, "account_id", "id") != workspace {
+		return map[string]any{}, nil
+	}
+	result["entitlement"] = defaultValue["entitlement"]
 	return result, nil
 }
 
@@ -405,6 +436,9 @@ func (c *OpenAIAccountClient) refreshClearance(ctx context.Context, proxyURL, me
 }
 
 func (c *OpenAIAccountClient) refreshOAuth(ctx context.Context, refreshToken string, account map[string]any) (AccountRefreshResult, error) {
+	if accountpolicy.External(account) {
+		return AccountRefreshResult{}, errors.New("local OAuth refresh is forbidden for externally managed credentials")
+	}
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", refreshToken)

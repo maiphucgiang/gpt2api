@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/agentidentity"
 	"github.com/maiphucgiang/gpt2api/internal/auth"
@@ -258,6 +259,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/accounts/token", s.accountToken)
 	mux.HandleFunc("/api/accounts/refresh", s.accountRefreshStart)
 	mux.HandleFunc("/api/accounts/refresh-at", s.accountAccessTokenRefresh)
+	mux.HandleFunc("/api/accounts/source", s.bindAccountSource)
 	mux.HandleFunc("/api/accounts/refresh/progress/", s.accountRefreshProgressAPI)
 	mux.HandleFunc("/api/accounts/oauth/start", s.accountOAuthStart)
 	mux.HandleFunc("/api/accounts/oauth/finish", s.accountOAuthFinish)
@@ -1637,6 +1639,8 @@ func positiveInt(raw string, fallback int) int {
 
 func accountForAPI(account map[string]any) map[string]any {
 	item := cloneMap(account)
+	item["credential_owner"] = accountpolicy.Owner(account)
+	item["bps_subscription_eligible"] = accountpolicy.SubscriptionEligible(account, time.Now())
 	ref := accountPublicRef(account)
 	if ref != "" {
 		item["id"] = ref
@@ -1706,6 +1710,9 @@ func accountStatusCategory(account map[string]any) string {
 // accounts with an expired or explicitly rejected access token are removable.
 func accountAutoRemoveInvalid(account map[string]any) bool {
 	if accountStatusCategory(account) != "abnormal" {
+		return false
+	}
+	if accountpolicy.External(account) {
 		return false
 	}
 	if strings.TrimSpace(stringValue(account["refresh_token"])) != "" {

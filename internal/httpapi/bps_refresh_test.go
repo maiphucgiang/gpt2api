@@ -43,7 +43,7 @@ func TestBPS401RotatesOnceAndUsesCheckpointedCredentials(t *testing.T) {
 		case "/backend-api/conversation/init":
 			_ = json.NewEncoder(w).Encode(map[string]any{"limits_progress": []any{}})
 		case "/backend-api/accounts/check/v4-2023-04-27":
-			_ = json.NewEncoder(w).Encode(map[string]any{"accounts": map[string]any{"default": map[string]any{"account": map[string]any{"plan_type": "plus"}}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"accounts": map[string]any{"new-workspace": map[string]any{"account": map[string]any{"plan_type": "plus"}, "entitlement": map[string]any{"has_active_subscription": true}}}})
 		default:
 			t.Error("unexpected URL", r.URL.Path)
 			http.NotFound(w, r)
@@ -56,7 +56,7 @@ func TestBPS401RotatesOnceAndUsesCheckpointedCredentials(t *testing.T) {
 	cfg.OpenAIOAuthURL = upstream.URL + "/oauth/token"
 	s := New(cfg)
 	defer s.Close()
-	_, _, _, err := s.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "codex", "access_token": oldToken, "refresh_token": "old-rt", "enabled": true, "status": "正常", "success": 0, "fail": 0}})
+	_, _, _, err := s.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "oauth_login", "access_token": oldToken, "refresh_token": "old-rt", "enabled": true, "status": "正常", "success": 0, "fail": 0, "subscription_active": true, "subscription_plan": "plus", "subscription_workspace_id": "old-workspace", "subscription_checked_at": time.Now().UTC().Format(time.RFC3339)}})
 	if err != nil {
 		t.Fatal(err)
 	}

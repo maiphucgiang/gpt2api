@@ -15,7 +15,7 @@ COPY VERSION CHANGELOG.md /src/
 COPY web-vue ./
 RUN pnpm run build
 
-FROM golang:1.23-alpine AS go-build
+FROM golang:1.27.3-alpine AS go-build
 WORKDIR /src
 COPY go.mod go.sum ./
 # Module downloads stay valid when only application source changes.
@@ -29,6 +29,8 @@ RUN --mount=type=cache,id=gpt2api-go-modules,target=/go/pkg/mod,sharing=locked \
     CGO_ENABLED=0 go build -mod=readonly -trimpath -ldflags="-s -w" -o /gpt2api ./cmd/gpt2api
 
 FROM alpine:3.21 AS app
+# CVE-2026-111943: reject compromised eMudhra intermediates even from stale base caches.
+RUN apk add --no-cache 'ca-certificates-bundle>=20261020-r0'
 RUN adduser -D -H -u 10001 app
 WORKDIR /app
 COPY --from=go-build /gpt2api /app/gpt2api

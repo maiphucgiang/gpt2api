@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -255,6 +256,10 @@ func remoteClient(verifyTLS bool) *http.Client {
 }
 
 func remoteJSON(client *http.Client, method, endpoint string, headers map[string]string, query url.Values, body any) (map[string]any, int, error) {
+	return remoteJSONContext(context.Background(), client, method, endpoint, headers, query, body)
+}
+
+func remoteJSONContext(ctx context.Context, client *http.Client, method, endpoint string, headers map[string]string, query url.Values, body any) (map[string]any, int, error) {
 	requestURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, 0, err
@@ -268,7 +273,7 @@ func remoteJSON(client *http.Client, method, endpoint string, headers map[string
 		}
 		reader = strings.NewReader(string(raw))
 	}
-	req, err := http.NewRequest(method, requestURL.String(), reader)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), reader)
 	if err != nil {
 		return nil, 0, err
 	}

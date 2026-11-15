@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
@@ -182,7 +183,7 @@ func (p *Pool) signalLocked() {
 }
 
 func (p *Pool) Feedback(account Account, status int, err error) {
-	if account.Token == "" || errors.Is(err, context.Canceled) {
+	if account.Token == "" || errors.Is(err, context.Canceled) || errors.Is(err, accountpolicy.ErrCredentialPending) {
 		return
 	}
 	if current, recordErr := p.repository.RecordAccountResult(account.Token, store.AccountID(account.Fields), status >= 200 && status < 300 && err == nil); recordErr == nil {

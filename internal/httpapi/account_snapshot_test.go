@@ -95,7 +95,7 @@ func TestSurvivalHonorsCredentialRotationSetting(t *testing.T) {
 		cfg := adminTestConfig(t.TempDir())
 		cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 		server := New(cfg)
-		_, _, items, err := server.store.AddAccounts(nil, []map[string]any{{"access_token": "existing-access", "refresh_token": "existing-refresh", "source_type": "codex"}})
+		_, _, items, err := server.store.AddAccounts(nil, []map[string]any{{"access_token": "existing-access", "refresh_token": "existing-refresh", "source_type": "oauth_login"}})
 		if err != nil {
 			t.Fatal(err)
 		}

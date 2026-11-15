@@ -42,6 +42,7 @@ func TestGPTImage25Endpoints(t *testing.T) {
 		stream        bool
 	}{
 		{"generation_url", "/v1/images/generations", "gpt-image-2.5", "auto", "url", 2, 0, false, false},
+		{"generation_26", "/v1/images/generations", "gpt-image-2.6", "auto", "url", 1, 0, false, false},
 		{"generation_base64", "/v1/images/generations", "gpt-image-2.5", "auto", "b64_json", 1, 0, false, false},
 		{"edit_json", "/v1/images/edits", "gpt-image-2.5", "auto", "url", 1, 2, false, false},
 		{"edit_multipart", "/v1/images/edits", "gpt-image-2.5", "auto", "url", 1, 1, true, false},

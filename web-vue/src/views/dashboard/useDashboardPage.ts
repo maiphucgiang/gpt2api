@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { statsApi } from '@/api/stats'
 import { usePageQuery, useVisibilityPolling } from '@/composables/usePageQuery'
 import { usePageRuntime } from '@/composables/usePageRuntime'
@@ -166,12 +166,13 @@ export function useDashboardPage() {
   const overviewCache = new Map<string, OverviewPayload>()
   const overviewRequests = new Map<string, Promise<OverviewPayload>>()
 
-  const trendChartRef = ref<HTMLDivElement | null>(null)
-  const modelChartRef = ref<HTMLDivElement | null>(null)
-  const successRateChartRef = ref<HTMLDivElement | null>(null)
-  const hourlyRequestsChartRef = ref<HTMLDivElement | null>(null)
-  const modelRankChartRef = ref<HTMLDivElement | null>(null)
-  const responseTimeChartRef = ref<HTMLDivElement | null>(null)
+  // 在组合函数中绑定模板，避免脚本解构变化断开图表节点。
+  const trendChartRef = useTemplateRef<HTMLDivElement>('trendChartRef')
+  const modelChartRef = useTemplateRef<HTMLDivElement>('modelChartRef')
+  const successRateChartRef = useTemplateRef<HTMLDivElement>('successRateChartRef')
+  const hourlyRequestsChartRef = useTemplateRef<HTMLDivElement>('hourlyRequestsChartRef')
+  const modelRankChartRef = useTemplateRef<HTMLDivElement>('modelRankChartRef')
+  const responseTimeChartRef = useTemplateRef<HTMLDivElement>('responseTimeChartRef')
 
   const charts = {
     trend: null as ChartInstance | null,

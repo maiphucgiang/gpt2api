@@ -514,6 +514,10 @@ func (s *Store) updatedAccountsLocked(token string, updates map[string]any) ([]m
 	for key, value := range updates {
 		next[key] = value
 	}
+	if accountToken(next) != accountToken(accounts[index]) || credentialField(next, "account_id") != credentialField(accounts[index], "account_id") || credentialField(next, "chatgpt_account_id") != credentialField(accounts[index], "chatgpt_account_id") {
+		next["subscription_checked_at"] = nil
+		next["last_quota_refresh_at"] = nil
+	}
 	next = normalizeAccountMapJSON(next)
 	accounts[index] = next
 	return accounts, next, true

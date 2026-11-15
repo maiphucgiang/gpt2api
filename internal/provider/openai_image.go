@@ -291,9 +291,16 @@ func (o *OpenAIImage) Resolve(ctx context.Context, account accounts.Account, ima
 		return nil, "", err
 	}
 	id := randomMediaID()
+	mimeType := strings.ToLower(strings.TrimSpace(strings.Split(image.MIME, ";")[0]))
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		mimeType = http.DetectContentType(raw)
+	}
 	ext := ".png"
-	if strings.EqualFold(image.MIME, "image/jpeg") {
+	switch mimeType {
+	case "image/jpeg", "image/jpg":
 		ext = ".jpg"
+	case "image/gif":
+		ext = ".gif"
 	}
 	if err := writeMediaFile(imageDir, id, ext, raw); err != nil {
 		return nil, "", err
@@ -1368,7 +1375,7 @@ func openAIImageModel(model string) string {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case "gpt-image-2":
 		return "gpt-5-3"
-	case "gpt-image-2.5":
+	case "gpt-image-2.5", "gpt-image-2.6":
 		// The web endpoint expects a conversation model, not an Image API ID.
 		// Its picture_v2 tool selects the image backend available to the account.
 		// Follow the current web default instead of pinning the legacy model.

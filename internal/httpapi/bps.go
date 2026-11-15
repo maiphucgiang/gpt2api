@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/bps"
 	"github.com/maiphucgiang/gpt2api/internal/model"
@@ -107,7 +108,7 @@ func bpsCooldownKey(account accounts.Account, name string) string {
 	return fmt.Sprintf("%x:%s", sum[:], name)
 }
 func (s *Server) bpsAvailable(account accounts.Account, name, ref string) bool {
-	if !isOpenAIAccount(account) || !boolValue(account.Fields["bps_enabled"], true) || (ref != "" && store.AccountID(account.Fields) != ref) {
+	if !isOpenAIAccount(account) || !boolValue(account.Fields["bps_enabled"], true) || !accountpolicy.SubscriptionEligible(account.Fields, time.Now()) || (ref != "" && store.AccountID(account.Fields) != ref) {
 		return false
 	}
 	if _, _, err := bps.Credentials(account); err != nil {
@@ -150,6 +151,7 @@ func (s *Server) bpsFeedback(account accounts.Account, name string, err error) {
 
 func (s *Server) runBPS(r *http.Request, owner, accountRef string, source bps.Object, tools *bps.Catalog, emit func(bps.Object) error) (bps.Object, error) {
 	name := bps.String(source["model"])
+	s.refreshBPSSubscriptions(r.Context(), accountRef)
 	lease, err := s.accountPool.ReserveExisting(r.Context(), func(a accounts.Account) bool { return s.bpsAvailable(a, name, accountRef) }, 2)
 	if err != nil {
 		return nil, &bps.Error{Status: 503, Code: "bps_account_unavailable", Message: "no available BPS account for this model or continuation"}
@@ -158,7 +160,7 @@ func (s *Server) runBPS(r *http.Request, owner, accountRef string, source bps.Ob
 	account := lease.Account
 	refreshed := false
 	refresh := func() error {
-		if refreshed || stringValue(account.Fields["refresh_token"]) == "" {
+		if refreshed || (!accountpolicy.External(account.Fields) && stringValue(account.Fields["refresh_token"]) == "") {
 			return &bps.Error{Status: 401, Code: "bps_auth_required", Message: "BPS access token needs renewal"}
 		}
 		refreshed = true
@@ -167,6 +169,9 @@ func (s *Server) runBPS(r *http.Request, owner, accountRef string, source bps.Ob
 			return &bps.Error{Status: 503, Code: "bps_refresh_failed", Message: "account credential refresh failed; new credentials, if issued, remain checkpointed"}
 		}
 		account = accounts.Account{Token: accountToken(updated), Pool: account.Pool, Fields: updated}
+		if !s.bpsAvailable(account, name, accountRef) {
+			return &bps.Error{Status: 403, Code: "bps_subscription_required", Message: "BPS requires a verified active subscription for this workspace"}
+		}
 		return nil
 	}
 	_, expires, _ := bps.Credentials(account)
@@ -193,7 +198,7 @@ func (s *Server) runBPS(r *http.Request, owner, accountRef string, source bps.Ob
 			s.bpsFeedback(account, name, err)
 		}
 		var upstream *bps.Error
-		if errors.As(err, &upstream) && upstream.Status == 401 && !upstream.Accepted && !refreshed && stringValue(account.Fields["refresh_token"]) != "" {
+		if errors.As(err, &upstream) && upstream.Status == 401 && !upstream.Accepted && !refreshed && (accountpolicy.External(account.Fields) || stringValue(account.Fields["refresh_token"]) != "") {
 			if err = refresh(); err != nil {
 				return nil, err
 			}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 )
 
@@ -161,7 +162,7 @@ func (s *Server) exportAccounts(tokens []string) ([]map[string]string, error) {
 }
 
 func buildAccountExportItem(account map[string]any) (map[string]string, bool) {
-	if !isOpenAIAccount(accounts.Account{Token: accountToken(account), Fields: account}) {
+	if accountpolicy.External(account) || !isOpenAIAccount(accounts.Account{Token: accountToken(account), Fields: account}) {
 		return nil, false
 	}
 	access, refresh, id := stringValue(account["access_token"]), stringValue(account["refresh_token"]), stringValue(account["id_token"])

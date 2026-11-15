@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/model"
 	"github.com/maiphucgiang/gpt2api/internal/protocol"
@@ -160,7 +161,7 @@ func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, p
 			for attempt := 0; attempt <= s.cfg.ChatMaxRetries; attempt++ {
 				accountStarted := time.Now()
 				s.stageRequestMonitor(r, "image_egress_waiting", 30, map[string]any{"egress_wait_ms": 0})
-				lease, reserveErr := s.accountPool.ReserveMatchingLimit(ctx, []string{"basic", "super", "heavy"}, excluded, isOpenAIAccount, s.cfg.ImageAccountLimit)
+				lease, reserveErr := s.reserveOpenAIImageAccount(ctx, excluded, size)
 				if reserveErr != nil {
 					sendErr(reserveErr)
 					cancel()
@@ -169,7 +170,12 @@ func (s *Server) generateOpenAIImageData(r *http.Request, ctx context.Context, p
 				s.enrichMonitorAccount(r, lease.Account)
 				s.stageRequestMonitor(r, "image_getting_account", 35, map[string]any{"account_wait_ms": time.Since(accountStarted).Milliseconds()})
 
-				generated, generateErr := s.openAIImage.Generate(ctx, lease.Account, prompt, model, size, quality, inputs)
+				var generated []provider.ImageResult
+				generateErr := s.runAccountBusiness(ctx, &lease.Account, func() error {
+					var callErr error
+					generated, callErr = s.openAIImage.Generate(ctx, lease.Account, prompt, model, size, quality, inputs)
+					return callErr
+				}, func(err error) bool { return !provider.ImageSubmissionUncertain(err) })
 				if generateErr == nil || provider.ImageSubmissionUncertain(generateErr) {
 					submitted.Store(true)
 				}
@@ -983,6 +989,9 @@ func cleanForwardedPrefix(value string) string {
 }
 
 func upstreamStatus(err error) int {
+	if errors.Is(err, accountpolicy.ErrCredentialPending) {
+		return http.StatusServiceUnavailable
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return http.StatusGatewayTimeout
 	}

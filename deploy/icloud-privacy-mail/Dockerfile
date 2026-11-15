@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.27.3-alpine AS build
 
 RUN apk add --no-cache ca-certificates
 WORKDIR /src
@@ -7,7 +7,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/icloud-
 
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache 'ca-certificates>=20261020-r0' tzdata
 COPY --from=build /out/icloud-privacy-mail /usr/local/bin/icloud-privacy-mail
 
 VOLUME ["/data"]

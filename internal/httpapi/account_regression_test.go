@@ -45,7 +45,7 @@ func TestSurvivalPersistsQuotaWithoutRefreshToken(t *testing.T) {
 	}
 }
 
-func TestCPAOnlyImportsCodexAndKeepsOAuthFields(t *testing.T) {
+func TestCPAOnlyImportsCodexAndDelegatesRefresh(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v0/management/auth-files" {
@@ -81,7 +81,7 @@ func TestCPAOnlyImportsCodexAndKeepsOAuthFields(t *testing.T) {
 		t.Fatalf("imported %d accounts, want only codex", len(items))
 	}
 	item := items[0]
-	if item["access_token"] != "gpt-token" || item["refresh_token"] != "rt-test" || item["id_token"] != "id-test" || item["account_id"] != "account-test" || item["source_type"] != "codex" {
-		t.Fatal("OAuth fields or provider identity lost")
+	if item["access_token"] != "gpt-token" || item["refresh_token"] != nil || item["id_token"] != "id-test" || item["account_id"] != "account-test" || item["source_type"] != "codex" || item["credential_owner"] != "cpa" || item["credential_source_id"] != "test-cpa" || item["credential_remote_id"] != "gpt.json" {
+		t.Fatal("credential ownership lost or refresh token imported")
 	}
 }

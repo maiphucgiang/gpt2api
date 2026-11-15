@@ -5,14 +5,15 @@ Go 后端与 Vue 控制台，提供 GPT 账号管理和 OpenAI 兼容接口。
 ## 功能
 
 - GPT 聊天、Responses、Anthropic Messages 兼容接口及流式响应。
-- GPT 图片生成、编辑、图库与可编辑文件任务；`gpt-image-2.5` 为现有图片链路的兼容入口。
+- GPT 图片生成、编辑、图库与可编辑文件任务；`gpt-image-2.5`／`gpt-image-2.6` 使用现有图片链路，支持 GIF 输出。
+- 超过 1K 的图片请求优先使用有效付费账号，无可用付费账号时允许 Free 账号执行。
 - 账号分组、配额检查、凭证刷新、调用统计、代理与运行日志。
-- CPA 仅导入 Codex OAuth，保留完整凭证；支持本地 JSON 与远程连接。
+- CPA／Sub2API 导入保留渠道绑定，AT 到期或认证失败时向原渠道同步，RT 由原渠道独占管理。
 - 可选 Go 图片队列网关、Redis 与本地 iCloud 邮箱服务。
 
 账号自动检查默认每 60 分钟运行，配额恢复到期后补查；账号页可见时每 10 秒读取本地状态。成功／失败按账号业务调用尝试累计，不包含配额检查，不补算无法确认的历史次数。
 
-OAuth 轮换成功后先保存新凭证，再查询资料和配额；探测失败不丢凭证。并发更新按凭证版本校验，旧令牌的在途反馈只累计次数，不覆盖新凭证的健康状态。
+本地 OAuth 账号轮换成功后先保存新凭证，再查询资料和配额；探测失败不丢凭证。外部托管账号不保存 RT、不调用本地轮换，渠道故障时保留原凭证并退避；没有渠道绑定的 CPA JSON 需先绑定来源。并发更新按凭证版本校验，旧令牌的在途反馈只累计次数，不覆盖新凭证的健康状态。
 
 凭证写盘失败会报错并停止资料探测，新凭证暂留内存并定时补写。修复磁盘后确认写盘成功再重启；补写前进程退出仍可能丢失新凭证。
 
@@ -105,6 +106,7 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 | `POST /v1/images/edits` | 图片编辑 |
 | `POST /v1/editable-file-tasks` | 可编辑文件任务 |
 | `POST /api/cpa/import` | 本地 Codex OAuth 批量导入，管理接口 |
+| `POST /api/accounts/source` | 校验并绑定原账号的 CPA／Sub2API 来源，管理接口 |
 
 CPA 导入会报告新增、重复、类型不支持及失败数量；类型不明确的文件不导入。OAuth 文件、账号导出和备份均含秘密，应限制访问并离线保存。
 
@@ -125,6 +127,8 @@ CPA 导入会报告新增、重复、类型不支持及失败数量；类型不�
 ### BPS 模型与 Agent 工具
 
 设置 `GO_BPS_ENABLED=true` 后，模型目录增加 `bsg/gpt-6-astra`、`bsg/gpt-5.6-sol`、`bsg/gpt-5.6-luna`、`bsg/gpt-5.6-terra`；请求与响应均使用带前缀的 ID，调用 BPS 时去掉 `bsg/`。不提供无前缀 BPS 别名；原有 `gpt-5-6-*` 等 Web slug 不变。认证复用账号池中的 ChatGPT JWT 与工作区 ID。
+
+所有 `bsg/` 模型要求对应工作区的非 Free 套餐及有效订阅权益，依据上游 `entitlement.has_active_subscription` 和到期时间，不信任手工修改的套餐标签。Free、未知、失效订阅不调度；验证结果最多复用 1 小时，凭证变化后重新核对，新请求和工具续接均检查。
 
 Responses、Chat Completions、Messages 均支持文本与流式工具调用；文本实时转发，工具整批校验并保存原始调用身份后才交给客户端。支持 function、custom 和 namespace 工具；JSON Schema 禁止外部引用，custom 的 grammar 作为模型提示与客户端约束，服务端不解析 Lark。工具代码只回传，不在服务器执行。
 

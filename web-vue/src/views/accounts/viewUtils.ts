@@ -118,6 +118,9 @@ export function accountRowSignature(item: Account): string {
     boundedSignatureText(item.cookie, 48),
     item.type,
     item.source_type,
+    item.credential_sync_error,
+    item.last_credential_sync_at,
+    item.bps_subscription_eligible ? 1 : 0,
     item.group_id,
     item.proxy,
     item.checkout_link_status,
@@ -583,7 +586,10 @@ export function accountSecondaryText(item: Account): string {
 export function accountSourceText(item: Account): string {
   const type = cleanString(item.type) || 'free'
   const sourceType = cleanString(item.source_type) || 'web'
-  return `${type} / ${sourceType}`
+  const owner = cleanString(item.credential_owner)
+  const source = ({ cpa: 'CPA 托管', sub2api: 'Sub2API 托管', external_unbound: '外部来源待绑定' } as Record<string, string>)[owner] || sourceType
+  const pending = item.credential_sync_status === 'pending' ? ' · 等待渠道更新' : ''
+  return `${type} / ${source}${pending}`
 }
 
 export function accountProxyText(item: Account): string {

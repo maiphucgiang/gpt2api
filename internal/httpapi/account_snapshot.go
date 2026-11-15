@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/provider"
 	"github.com/maiphucgiang/gpt2api/internal/store"
@@ -73,7 +74,24 @@ func (s *Server) refreshAccountSnapshotExpected(ctx context.Context, ref string,
 	client := s.openAIAccountClient()
 	version := store.CredentialsOf(account)
 	var checkpointErr error
-	result, err := client.RefreshWithCheckpoint(ctx, account, rotate, func(tokens provider.AccountRefreshResult) error {
+	external := accountpolicy.External(account)
+	synced := false
+	sync := func(rejected bool) error {
+		updated, syncErr := s.syncExternalCredentials(ctx, account, rejected)
+		if syncErr != nil {
+			return syncErr
+		}
+		account, version = updated, store.CredentialsOf(updated)
+		flight.rotate, flight.account, synced = true, cloneMap(updated), true
+		return nil
+	}
+	if external && (rotate || accountpolicy.Due(account, time.Now())) {
+		if syncErr := sync(expectedToken != ""); syncErr != nil {
+			flight.err = syncErr
+			return nil, syncErr
+		}
+	}
+	result, err := client.RefreshWithCheckpoint(ctx, account, rotate && !external, func(tokens provider.AccountRefreshResult) error {
 		updated, err := s.store.SaveAccountCredentials(version, tokens.AccessToken, tokens.RefreshToken, tokens.IDToken)
 		if updated != nil {
 			account = updated
@@ -84,6 +102,13 @@ func (s *Server) refreshAccountSnapshotExpected(ctx context.Context, ref string,
 		checkpointErr = err
 		return err
 	})
+	if external && !synced && errors.Is(err, provider.ErrInvalidAccessToken) {
+		if syncErr := sync(true); syncErr != nil {
+			flight.err = syncErr
+			return nil, syncErr
+		}
+		result, err = client.RefreshWithCheckpoint(ctx, account, false, nil)
+	}
 	now := time.Now().UTC()
 	if err != nil {
 		if checkpointErr != nil {

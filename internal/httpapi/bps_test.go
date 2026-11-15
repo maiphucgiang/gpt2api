@@ -30,7 +30,7 @@ func bpsTestServer(t *testing.T, handler http.HandlerFunc) *Server {
 	cfg.BPSTimeout = 2 * time.Second
 	s := New(cfg)
 	t.Cleanup(func() { _ = s.Close() })
-	_, _, _, err := s.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "chatgpt_web", "access_token": bpsTestToken("workspace", time.Now().Add(time.Hour)), "status": "限流", "quota": 0, "enabled": true, "success": 4, "fail": 2}})
+	_, _, _, err := s.store.AddAccounts(nil, []map[string]any{{"id": "account", "source_type": "chatgpt_web", "access_token": bpsTestToken("workspace", time.Now().Add(time.Hour)), "status": "限流", "quota": 0, "enabled": true, "success": 4, "fail": 2, "subscription_plan": "plus", "subscription_active": true, "subscription_workspace_id": "workspace", "subscription_checked_at": time.Now().UTC().Format(time.RFC3339)}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,7 @@ export const FALLBACK_CHAT_MODELS = [
 export const FALLBACK_IMAGE_MODELS = [
   'gpt-image-2',
   'gpt-image-2.5',
+  'gpt-image-2.6',
 ]
 
 function normalizeList(raw: unknown): string[] {

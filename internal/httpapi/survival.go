@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 )
 
@@ -114,6 +115,11 @@ func accountRefreshInterval(config map[string]any) time.Duration {
 }
 
 func nextAccountRefresh(item map[string]any, interval time.Duration, now time.Time) time.Time {
+	if accountpolicy.External(item) {
+		if retry, err := time.Parse(time.RFC3339, stringValue(item["credential_sync_retry_at"])); err == nil && retry.After(now) {
+			return retry
+		}
+	}
 	if retry, err := time.Parse(time.RFC3339, stringValue(item["quota_refresh_retry_at"])); err == nil && retry.After(now) {
 		return retry
 	}
@@ -121,10 +127,18 @@ func nextAccountRefresh(item map[string]any, interval time.Duration, now time.Ti
 	if err != nil {
 		return now
 	}
+	if stringValue(item["subscription_checked_at"]) == "" {
+		return now
+	}
 	next := last.Add(interval)
 	if intValue(item["quota"]) == 0 && !boolValue(item["image_quota_unknown"], false) {
 		if reset, err := time.Parse(time.RFC3339, stringValue(item["restore_at"])); err == nil && reset.After(last) && reset.Before(next) {
 			next = reset
+		}
+	}
+	if accountpolicy.External(item) {
+		if exp := accountpolicy.Expiry(item); !exp.IsZero() && exp.Add(-5*time.Minute).Before(next) {
+			next = exp.Add(-5 * time.Minute)
 		}
 	}
 	return next

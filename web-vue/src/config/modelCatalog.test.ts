@@ -15,4 +15,7 @@ describe('BPS model catalog', () => {
     expect(resolveChatModels(null)).not.toContain('bsg/gpt-5.6-sol')
     expect(resolveChatModels(null)).toContain('gpt-5-6-sol')
   })
+  it('includes GPT Image 2.6 in fallback image models', () => {
+    expect(resolveImageModels(null)).toContain('gpt-image-2.6')
+  })
 })

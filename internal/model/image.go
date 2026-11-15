@@ -7,7 +7,7 @@ import "strings"
 // provider or be treated as text conversation models.
 func IsOpenAIImage(id string) bool {
 	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "gpt-image-2", "gpt-image-2.5":
+	case "gpt-image-2", "gpt-image-2.5", "gpt-image-2.6":
 		return true
 	default:
 		return false

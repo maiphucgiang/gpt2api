@@ -53,7 +53,7 @@ docker compose --profile local-icloud up -d --build
 
 ## 源码运行
 
-主服务需要 Go 1.23+、Node.js 22、pnpm 12.5.1；本地邮箱子模块需要 Go 1.25+。
+主服务需要 Go 1.23+、Node.js 26、pnpm 12.5.1；本地邮箱子模块需要 Go 1.25+。
 
 ```bash
 pnpm --dir web-vue install --frozen-lockfile --ignore-scripts

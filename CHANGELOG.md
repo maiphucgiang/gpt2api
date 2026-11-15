@@ -42,7 +42,7 @@
 ### 工程与安全
 
 - 精简为 GPT-only 功能：移除 Python 服务、captcha-solver 等旧组件（约 3.9 万行），统一部署入口和文档，保留既有账号与图片队列数据兼容。
-- 统一为 gpt2api 命名、Go 后端、Vue 前端和 pnpm 构建，Docker 与 CI 不再混用 npm。
+- 统一为 gpt2api 命名、Go 后端、Vue 前端；项目依赖安装统一使用 pnpm，Docker 仅用 npm 引导安装固定 pnpm 版本，CI 不安装 npm 依赖。
 - 增加串行门禁 `scripts/check.sh`：测试 → 构建 → 静态分析；构建产出主服务、Go 图片网关、iCloud 邮箱三个本地镜像并校验 Compose，不启动服务或发布镜像。
 - 构建工具链升级到 Go 1.27.3 并更新镜像 CA 证书包，拒绝已泄露的 eMudhra/emSign 中间证书（CVE-2026-111943）。
 

@@ -1,14 +1,10 @@
-FROM node:22-alpine AS web-build
+FROM node:26-alpine AS web-build
 WORKDIR /src/web-vue
-# Keep the verified native binary across base-image updates, partitioned by architecture.
+# npm only bootstraps the verified pnpm 12.5.1 binary; project installs stay on pnpm.
 ARG TARGETARCH
-RUN --mount=type=cache,id=gpt2api-pnpm-12.5.1-${TARGETARCH},target=/pnpm-bootstrap-cache \
-    corepack enable \
-    && COREPACK_HOME=/pnpm-bootstrap-cache timeout 120 corepack prepare pnpm@12.5.1 --activate \
-    && test "$(COREPACK_HOME=/pnpm-bootstrap-cache timeout 420 pnpm --version)" = "12.5.1" \
-    && mkdir -p /opt/corepack \
-    && cp -a /pnpm-bootstrap-cache/. /opt/corepack/
-ENV COREPACK_HOME=/opt/corepack COREPACK_ENABLE_NETWORK=0
+RUN --mount=type=cache,id=gpt2api-npm-pnpm-12.5.1-${TARGETARCH},target=/root/.npm \
+    timeout 420 npm install -g --allow-scripts=pnpm pnpm@12.5.1 \
+    && test "$(pnpm --version)" = "12.5.1"
 COPY web-vue/package.json web-vue/pnpm-lock.yaml web-vue/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY VERSION CHANGELOG.md /src/

@@ -11,7 +11,7 @@
 
 ## 源码
 
-需要 Go 1.23+、Node.js 22、pnpm 12.5.1。
+需要 Go 1.23+、Node.js 26、pnpm 12.5.1。
 
 ```bash
 pnpm --dir web-vue install --frozen-lockfile --ignore-scripts

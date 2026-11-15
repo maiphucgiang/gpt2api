@@ -4,7 +4,7 @@
 
 ## 原生服务
 
-准备 Go 1.23+、Node.js 22 和 pnpm 12.5.1，构建主服务：
+准备 Go 1.23+、Node.js 26 和 pnpm 12.5.1，构建主服务：
 
 ```bash
 pnpm --dir web-vue install --frozen-lockfile --ignore-scripts

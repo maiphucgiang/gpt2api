@@ -6,3 +6,12 @@ overrides:
   anymatch>picomatch: 2.3.2
   vite>picomatch: 4.0.4
   tinyglobby>picomatch: 4.0.4
+  vite@*: "catalog:"
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
+  vite-plus: 1.6.0
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

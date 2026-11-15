@@ -43,6 +43,8 @@
 
 - 精简为 GPT-only 功能：移除 Python 服务、captcha-solver 等旧组件（约 3.9 万行），统一部署入口和文档，保留既有账号与图片队列数据兼容。
 - 统一为 gpt2api 命名、Go 后端、Vue 前端；项目依赖安装统一使用 pnpm，Docker 仅用 npm 引导安装固定 pnpm 版本，CI 不安装 npm 依赖。
+- 前端工具链迁移到 Vite+ 1.6.0：开发、测试、构建和预览脚本改用 `vp`，Vite+ core/Rolldown 与 Vitest 5 接管构建测试，保留 `vue-tsc` 类型检查。
+- 迁移保留 `@` 别名、开发代理、`dist` 输出、Tailwind 3/PostCSS、nanocat-ui、vue-virtual-scroller、happy-dom 和 ECharts vendor 引用；8 个前端测试（23 个用例）含 Dashboard 六图真实挂载回归均通过。
 - 增加串行门禁 `scripts/check.sh`：测试 → 构建 → 静态分析；构建产出主服务、Go 图片网关、iCloud 邮箱三个本地镜像并校验 Compose，不启动服务或发布镜像。
 - 构建工具链升级到 Go 1.27.3 并更新镜像 CA 证书包，拒绝已泄露的 eMudhra/emSign 中间证书（CVE-2026-111943）。
 

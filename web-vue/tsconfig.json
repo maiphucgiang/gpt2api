@@ -21,9 +21,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-
-    /* Path Alias */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }

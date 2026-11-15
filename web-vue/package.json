@@ -1,30 +1,15 @@
 {
   "name": "gpt2api-console",
-  "packageManager": "pnpm@12.5.1",
-  "private": true,
   "version": "1.2.4",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "test": "vitest run",
+    "dev": "vp dev",
+    "test": "vp test run",
     "typecheck": "vue-tsc --noEmit",
-    "build": "vite build",
+    "build": "vp build",
     "build:server": "pnpm run build && node -e \"require('fs').cpSync('dist', '../web_dist', { recursive: true })\"",
-    "preview": "vite preview"
-  },
-  "devDependencies": {
-    "@iconify/vue": "^5.0.0",
-    "@types/js-beautify": "^1.14.3",
-    "@types/markdown-it": "^14.1.2",
-    "@vue/test-utils": "2.5.1",
-    "autoprefixer": "^10.4.23",
-    "happy-dom": "20.14.5",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.19",
-    "typescript": "~5.9.3",
-    "vite": "^7.3.2",
-    "vitest": "4.1.11",
-    "vue-tsc": "3.3.11"
+    "preview": "vp preview"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.6",
@@ -37,5 +22,20 @@
     "vue": "^3.5.26",
     "vue-router": "^4.6.4",
     "vue-virtual-scroller": "^2.0.0-beta.8"
-  }
+  },
+  "devDependencies": {
+    "@iconify/vue": "^5.0.0",
+    "@types/js-beautify": "^1.14.3",
+    "@types/markdown-it": "^14.1.2",
+    "@vue/test-utils": "2.5.1",
+    "autoprefixer": "^10.4.23",
+    "happy-dom": "20.14.5",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.9.3",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vue-tsc": "3.3.11"
+  },
+  "packageManager": "pnpm@12.5.1"
 }

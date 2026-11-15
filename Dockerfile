@@ -9,7 +9,7 @@ COPY web-vue/package.json web-vue/pnpm-lock.yaml web-vue/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY VERSION CHANGELOG.md /src/
 COPY web-vue ./
-RUN pnpm run build
+RUN pnpm exec vp build
 
 FROM golang:1.27.3-alpine AS go-build
 WORKDIR /src

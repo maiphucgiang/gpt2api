@@ -47,6 +47,9 @@
 - 迁移保留 `@` 别名、开发代理、`dist` 输出、Tailwind 3/PostCSS、nanocat-ui、vue-virtual-scroller、happy-dom 和 ECharts vendor 引用；8 个前端测试（23 个用例）含 Dashboard 六图真实挂载回归均通过。
 - 增加串行门禁 `scripts/check.sh`：测试 → 构建 → 静态分析；构建产出主服务、Go 图片网关、iCloud 邮箱三个本地镜像并校验 Compose，不启动服务或发布镜像。
 - 构建工具链升级到 Go 1.27.3 并更新镜像 CA 证书包，拒绝已泄露的 eMudhra/emSign 中间证书（CVE-2026-111943）。
+- 将本地门禁拆成 `scripts/check-backend.sh` 与 `scripts/check-frontend.sh`：根 `scripts/check.sh` 只按 `test` → `build` → `static` 依次调用两个子脚本，不再重复实现检查逻辑。前端子命令分别为 `pnpm --dir web-vue exec vp test --run`、`pnpm exec vp build` 与 `vue-tsc --noEmit`（静态阶段仍跑 `git diff --check HEAD`）。后端子命令覆盖三个 Go module 的 `go test -race`、主服务/图片网关/iCloud 三镜像构建、原有 Compose overlay 与环境 JSON 断言（`node -e` 改为 `jq -e`，键值不变），以及 `go vet`/`gofmt`/`bash -n`/`git diff --check`；后端脚本不调用 Node 或 pnpm。
+- 新增 GitHub Actions `frontend.yml` 与 `backend.yml`：二者均声明带路径过滤的 `push`/`pull_request`、`workflow_call` 与 `workflow_dispatch`。前端工作流只安装 Node 26 与 pnpm 12.5.1，按 test → build → static 调用 `check-frontend.sh`，不引入 Go/Docker。后端工作流只安装 Go 1.27.x，按同一顺序调用 `check-backend.sh`，不安装 Node/pnpm。路径覆盖 `web-vue`、Go 源码、Compose、Dockerfile、编排脚本、两个检查工作流、`ci.yml` 与 `docker-publish.yml`，避免共享编排文件变更时没有任何工作流触发。
+- `ci.yml` 改为仅 `workflow_call`/`workflow_dispatch` 的薄编排器，按 `needs` 先调用 `frontend.yml` 再调用 `backend.yml`；`docker-publish.yml` 仍 `uses` `ci.yml`，发布前走完整前后端门禁。Docker `web-build` 最后一步改为显式 `pnpm exec vp build`，保留 Node 26、按 `TARGETARCH` 的 npm 缓存、`--allow-scripts=pnpm` 与 pnpm 12.5.1 断言，不再经过 `pnpm run build`。
 
 ## v1.2.4
 

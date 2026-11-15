@@ -1,0 +1,46 @@
+name: Frontend Check
+
+on:
+  push:
+    paths:
+      - 'web-vue/**'
+      - '.github/workflows/frontend.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/docker-publish.yml'
+      - 'scripts/check-frontend.sh'
+      - 'scripts/check.sh'
+  pull_request:
+    paths:
+      - 'web-vue/**'
+      - '.github/workflows/frontend.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/docker-publish.yml'
+      - 'scripts/check-frontend.sh'
+      - 'scripts/check.sh'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.5.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: web-vue/pnpm-lock.yaml
+      - run: pnpm --dir web-vue install --frozen-lockfile --ignore-scripts
+      - name: Tests
+        run: bash scripts/check-frontend.sh test
+      - name: CI build
+        run: bash scripts/check-frontend.sh build
+      - name: Static analysis and Vue SFC checks
+        run: bash scripts/check-frontend.sh static

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,27 +17,60 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maiphucgiang/gpt2api/internal/accountpolicy"
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
 	"github.com/maiphucgiang/gpt2api/internal/model"
-	"github.com/maiphucgiang/gpt2api/internal/protocol"
 	"github.com/maiphucgiang/gpt2api/internal/provider"
+	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
 // JSON resources share the persistent application volume.
 
+const editableFileTaskTimeout = 25 * time.Minute
+
 type editableFileTaskState struct {
-	ID        string         `json:"id"`
-	TaskID    string         `json:"taskId,omitempty"`
-	Owner     string         `json:"owner_id"`
-	Status    string         `json:"status"`
-	Kind      string         `json:"kind"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
-	Error     string         `json:"error,omitempty"`
-	Result    map[string]any `json:"result,omitempty"`
-	Prompt    string         `json:"-"`
-	Images    []string       `json:"-"`
-	StartedAt time.Time      `json:"-"`
+	ID             string         `json:"id"`
+	TaskID         string         `json:"taskId,omitempty"`
+	Owner          string         `json:"owner_id"`
+	Status         string         `json:"status"`
+	Kind           string         `json:"kind"`
+	AccountID      string         `json:"account_id,omitempty"`
+	UserID         string         `json:"user_id,omitempty"`
+	WorkspaceID    string         `json:"workspace_id,omitempty"`
+	ConversationID string         `json:"conversation_id,omitempty"`
+	CreatedAt      string         `json:"created_at"`
+	UpdatedAt      string         `json:"updated_at"`
+	Error          string         `json:"error,omitempty"`
+	Result         map[string]any `json:"result,omitempty"`
+	Prompt         string         `json:"-"`
+	Images         []string       `json:"-"`
+	StartedAt      time.Time      `json:"-"`
+	inFlight       bool           `json:"-"`
+}
+
+type editableLocalError struct{ err error }
+
+func (e *editableLocalError) Error() string { return e.err.Error() }
+func (e *editableLocalError) Unwrap() error { return e.err }
+
+func localEditableError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var local *editableLocalError
+	if errors.As(err, &local) {
+		return err
+	}
+	return &editableLocalError{err: err}
+}
+
+func isEditableLocalError(err error) bool {
+	var local *editableLocalError
+	return errors.As(err, &local)
+}
+
+func editableCheckpointReady(task *editableFileTaskState) bool {
+	return task != nil && strings.TrimSpace(task.ConversationID) != "" && strings.TrimSpace(task.AccountID) != ""
 }
 
 func (s *Server) thirdPartyApps(w http.ResponseWriter, r *http.Request) {
@@ -616,16 +650,17 @@ func (s *Server) editableFileTasksAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "prompt is required", "invalid_request_error")
 		return
 	}
+	images, err := normalizeEditableImages(body.Base64Images)
+	if err != nil {
+		writeError(w, 400, err.Error(), "invalid_request_error")
+		return
+	}
 	if body.ClientTaskID == "" {
 		body.ClientTaskID = "file_" + randomID()
 	}
 	task := &editableFileTaskState{ID: body.ClientTaskID, TaskID: body.ClientTaskID, Owner: owner, Status: "queued", Kind: body.Kind, CreatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
-	if body.Kind == "psd" && len(body.Base64Images) == 0 {
-		writeError(w, 400, "base64_images is empty", "invalid_request_error")
-		return
-	}
 	task.Prompt = body.Prompt
-	task.Images = body.Base64Images
+	task.Images = images
 	s.fileTaskMu.Lock()
 	key := editableTaskKey(owner, task.ID)
 	if old := s.fileTasks[key]; old != nil {
@@ -634,9 +669,10 @@ func (s *Server) editableFileTasksAPI(w http.ResponseWriter, r *http.Request) {
 		s.fileTasks[key] = task
 		s.saveEditableFileTasksLocked()
 	}
+	public := editableTaskPublic(task)
 	s.fileTaskMu.Unlock()
-	go s.runEditableFileTask(task)
-	writeJSON(w, 202, editableTaskPublic(task))
+	s.startEditableFileTask(task)
+	writeJSON(w, 202, public)
 }
 
 func (s *Server) editableFileTaskByID(w http.ResponseWriter, r *http.Request) {
@@ -644,14 +680,17 @@ func (s *Server) editableFileTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/editable-file-tasks/"), "/")
+	owner := s.authIdentity(r)
 	s.fileTaskMu.RLock()
-	task, ok := s.fileTasks[editableTaskKey(s.authIdentity(r), id)]
-	s.fileTaskMu.RUnlock()
-	if !ok || task.OwnerID() != s.authIdentity(r) {
+	task, ok := s.fileTasks[editableTaskKey(owner, id)]
+	if !ok || task.OwnerID() != owner {
+		s.fileTaskMu.RUnlock()
 		writeError(w, 404, "editable file task not found", "not_found")
 		return
 	}
-	writeJSON(w, 200, editableTaskPublic(task))
+	public := editableTaskPublic(task)
+	s.fileTaskMu.RUnlock()
+	writeJSON(w, 200, public)
 }
 
 func (s *Server) pptGenerations(w http.ResponseWriter, r *http.Request) {
@@ -682,15 +721,16 @@ func (s *Server) editableGeneration(w http.ResponseWriter, r *http.Request, kind
 		writeError(w, http.StatusBadRequest, "prompt is required", "invalid_request_error")
 		return
 	}
-	if kind == "psd" && len(body.Base64Images) == 0 {
-		writeError(w, http.StatusBadRequest, "base64_images is empty", "invalid_request_error")
+	images, err := normalizeEditableImages(body.Base64Images)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
 		return
 	}
 	if strings.TrimSpace(body.ClientTaskID) == "" {
 		body.ClientTaskID = "file_" + randomID()
 	}
 	owner := s.authIdentity(r)
-	task := &editableFileTaskState{ID: body.ClientTaskID, TaskID: body.ClientTaskID, Owner: owner, Status: "queued", Kind: kind, Prompt: body.Prompt, Images: body.Base64Images, CreatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	task := &editableFileTaskState{ID: body.ClientTaskID, TaskID: body.ClientTaskID, Owner: owner, Status: "queued", Kind: kind, Prompt: body.Prompt, Images: images, CreatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
 	s.fileTaskMu.Lock()
 	key := editableTaskKey(owner, task.ID)
 	if old := s.fileTasks[key]; old != nil {
@@ -699,61 +739,177 @@ func (s *Server) editableGeneration(w http.ResponseWriter, r *http.Request, kind
 		s.fileTasks[key] = task
 		s.saveEditableFileTasksLocked()
 	}
+	public := editableTaskPublic(task)
 	s.fileTaskMu.Unlock()
-	go s.runEditableFileTask(task)
-	writeJSON(w, http.StatusAccepted, editableTaskPublic(task))
+	s.startEditableFileTask(task)
+	writeJSON(w, http.StatusAccepted, public)
+}
+
+func normalizeEditableImages(values []string) ([]string, error) {
+	images := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		images = append(images, value)
+	}
+	if len(images) == 0 {
+		return nil, errors.New("base64_images is empty")
+	}
+	if len(images) > provider.EditableReferenceImageMaxCount {
+		return nil, fmt.Errorf("at most %d reference images are allowed", provider.EditableReferenceImageMaxCount)
+	}
+	return images, nil
+}
+
+func (s *Server) editableTaskTimeout() time.Duration {
+	return editableFileTaskTimeout
+}
+
+func (s *Server) reserveEditableAccount(ctx context.Context) (*accounts.Lease, error) {
+	now := time.Now()
+	return s.accountPool.ReserveMatching(ctx, []string{"basic", "super", "heavy"}, nil, func(account accounts.Account) bool {
+		return isOpenAIAccount(account) && accountpolicy.SubscriptionEligible(account.Fields, now)
+	})
+}
+
+func (s *Server) startEditableFileTask(task *editableFileTaskState) {
+	s.backgroundWorkers.Add(1)
+	go func() {
+		defer s.backgroundWorkers.Done()
+		s.runEditableFileTask(task)
+	}()
 }
 
 func (s *Server) runEditableFileTask(task *editableFileTaskState) {
 	s.fileTaskMu.Lock()
-	if task.Status != "queued" {
+	resume := editableCheckpointReady(task)
+	switch {
+	case task.inFlight:
+		s.fileTaskMu.Unlock()
+		return
+	case task.Status == "queued":
+		task.Status = "running"
+		task.StartedAt = time.Now()
+		task.UpdatedAt = task.StartedAt.UTC().Format(time.RFC3339)
+		s.saveEditableFileTasksLocked()
+	case task.Status == "running" && resume:
+	default:
 		s.fileTaskMu.Unlock()
 		return
 	}
-	task.Status = "running"
-	task.StartedAt = time.Now()
-	task.UpdatedAt = task.StartedAt.UTC().Format(time.RFC3339)
-	s.saveEditableFileTasksLocked()
+	task.inFlight = true
 	s.fileTaskMu.Unlock()
+	defer func() {
+		s.fileTaskMu.Lock()
+		task.inFlight = false
+		s.fileTaskMu.Unlock()
+	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	ctx, cancel := context.WithTimeout(s.backgroundContext, s.editableTaskTimeout())
 	defer cancel()
-	lease, err := s.accountPool.ReserveMatching(ctx, []string{"basic", "super", "heavy"}, nil, func(account accounts.Account) bool {
-		if !isOpenAIAccount(account) {
-			return false
-		}
-		plan := strings.ToLower(firstNonEmpty(stringValue(account.Fields["plan_type"]), stringValue(account.Fields["account_plan_type"]), stringValue(account.Fields["subscription_plan"])))
-		return plan == "" || strings.Contains(plan, "plus") || strings.Contains(plan, "team") || strings.Contains(plan, "pro") || strings.Contains(plan, "enterprise")
+	if resume {
+		s.resumeEditableFileTask(ctx, task)
+		return
+	}
+	s.executeEditableFileTask(ctx, task)
+}
+
+func (s *Server) executeEditableFileTask(ctx context.Context, task *editableFileTaskState) {
+	inputs, err := provider.DecodeEditableInputs(task.Images)
+	if err != nil {
+		s.finishEditableFileTask(task, nil, localEditableError(err), false)
+		return
+	}
+	lease, err := s.reserveEditableAccount(ctx)
+	if err != nil {
+		s.finishEditableFileTask(task, nil, err, false)
+		return
+	}
+	defer s.accountPool.Release(lease)
+	exported, err := s.openAIImage.ExportEditable(ctx, lease.Account, task.Kind, task.Prompt, inputs, func(conversationID string) error {
+		return localEditableError(s.persistEditableCheckpoint(task, lease.Account, conversationID))
 	})
-	if err == nil {
-		defer s.accountPool.Release(lease)
+	accepted := exported.ConversationID != "" || editableCheckpointReady(task)
+	if err != nil {
+		s.finishEditableFileTask(task, lease, err, accepted)
+		return
 	}
-	inputs := []provider.OpenAIImageInput{}
-	if err == nil {
-		inputs, err = provider.DecodeEditableInputs(task.Images)
+	result, saveErr := s.saveEditableExport(task, exported)
+	if saveErr != nil {
+		s.finishEditableFileTask(task, lease, localEditableError(saveErr), true)
+		return
 	}
-	var exported provider.EditableExportResult
-	if err == nil {
-		exported, err = s.openAIImage.ExportEditable(ctx, lease.Account, task.Kind, task.Prompt, inputs)
+	s.succeedEditableFileTask(task, lease, result)
+}
+
+func (s *Server) resumeEditableFileTask(ctx context.Context, task *editableFileTaskState) {
+	s.fileTaskMu.RLock()
+	accountID, userID, workspaceID, conversationID, kind := task.AccountID, task.UserID, task.WorkspaceID, task.ConversationID, task.Kind
+	s.fileTaskMu.RUnlock()
+	lease, err := s.accountPool.ReserveExisting(ctx, func(account accounts.Account) bool {
+		return isOpenAIAccount(account) && store.AccountID(account.Fields) == accountID &&
+			(userID == "" || stringValue(account.Fields["user_id"]) == userID) &&
+			(workspaceID == "" || stringValue(account.Fields["account_id"]) == workspaceID)
+	}, s.cfg.ImageAccountLimit)
+	if err != nil {
+		s.finishEditableFileTask(task, nil, err, false)
+		return
 	}
-	if err == nil {
-		result, saveErr := s.saveEditableExport(task, exported)
-		if saveErr != nil {
-			err = saveErr
-		} else {
-			s.fileTaskMu.Lock()
-			task.Status = "success"
-			task.Error = ""
-			task.Result = result
-			task.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-			s.saveEditableFileTasksLocked()
-			s.fileTaskMu.Unlock()
-			s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
-			return
-		}
+	defer s.accountPool.Release(lease)
+	exported, err := s.openAIImage.ResumeEditable(ctx, lease.Account, conversationID, kind)
+	if err != nil {
+		s.finishEditableFileTask(task, lease, err, false)
+		return
+	}
+	result, saveErr := s.saveEditableExport(task, exported)
+	if saveErr != nil {
+		s.finishEditableFileTask(task, lease, localEditableError(saveErr), true)
+		return
+	}
+	s.succeedEditableFileTask(task, lease, result)
+}
+
+func (s *Server) persistEditableCheckpoint(task *editableFileTaskState, account accounts.Account, conversationID string) error {
+	s.fileTaskMu.Lock()
+	defer s.fileTaskMu.Unlock()
+	task.AccountID = store.AccountID(account.Fields)
+	task.UserID = stringValue(account.Fields["user_id"])
+	task.WorkspaceID = stringValue(account.Fields["account_id"])
+	task.ConversationID = strings.TrimSpace(conversationID)
+	task.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return s.saveEditableFileTasksLockedError()
+}
+
+func (s *Server) succeedEditableFileTask(task *editableFileTaskState, lease *accounts.Lease, result map[string]any) {
+	if s.backgroundContext.Err() != nil {
+		return
 	}
 	if lease != nil {
-		s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
+		s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
+	}
+	s.fileTaskMu.Lock()
+	task.Status = "success"
+	task.Error = ""
+	task.Result = result
+	task.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.saveEditableFileTasksLocked()
+	s.fileTaskMu.Unlock()
+}
+
+func (s *Server) finishEditableFileTask(task *editableFileTaskState, lease *accounts.Lease, err error, accepted bool) {
+	if s.backgroundContext.Err() != nil {
+		return
+	}
+	if lease != nil {
+		switch {
+		case isEditableLocalError(err) && accepted:
+			s.accountPool.Feedback(lease.Account, http.StatusOK, nil)
+		case isEditableLocalError(err):
+		default:
+			s.accountPool.Feedback(lease.Account, upstreamStatus(err), err)
+		}
 	}
 	s.fileTaskMu.Lock()
 	task.Status = "error"
@@ -879,7 +1035,11 @@ func editableTaskPublic(task *editableFileTaskState) map[string]any {
 		value["error"] = task.Error
 	}
 	if task.Result != nil {
-		value["result"] = task.Result
+		result := make(map[string]any, len(task.Result))
+		for key, item := range task.Result {
+			result[key] = item
+		}
+		value["result"] = result
 	}
 	return value
 }
@@ -907,6 +1067,7 @@ func (s *Server) loadEditableFileTasks() {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	changed := false
+	resume := []*editableFileTaskState{}
 	s.fileTaskMu.Lock()
 	for _, task := range envelope.Tasks {
 		if task == nil || strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Owner) == "" {
@@ -916,9 +1077,16 @@ func (s *Server) loadEditableFileTasks() {
 			task.TaskID = task.ID
 		}
 		if task.Status == "queued" || task.Status == "running" {
-			task.Status = "error"
-			task.Error = "服务已重启，未完成的任务已中断"
-			task.UpdatedAt = now
+			if editableCheckpointReady(task) {
+				task.Status = "running"
+				task.Error = ""
+				task.UpdatedAt = now
+				resume = append(resume, task)
+			} else {
+				task.Status = "error"
+				task.Error = "服务已重启，任务没有可续查检查点，不会重新提交"
+				task.UpdatedAt = now
+			}
 			changed = true
 		}
 		s.fileTasks[editableTaskKey(task.Owner, task.ID)] = task
@@ -927,9 +1095,16 @@ func (s *Server) loadEditableFileTasks() {
 		s.saveEditableFileTasksLocked()
 	}
 	s.fileTaskMu.Unlock()
+	for _, task := range resume {
+		s.startEditableFileTask(task)
+	}
 }
 
 func (s *Server) saveEditableFileTasksLocked() {
+	_ = s.saveEditableFileTasksLockedError()
+}
+
+func (s *Server) saveEditableFileTasksLockedError() error {
 	items := make([]*editableFileTaskState, 0, len(s.fileTasks))
 	for _, task := range s.fileTasks {
 		items = append(items, task)
@@ -937,16 +1112,17 @@ func (s *Server) saveEditableFileTasksLocked() {
 	sort.Slice(items, func(i, j int) bool { return items[i].UpdatedAt > items[j].UpdatedAt })
 	raw, err := json.MarshalIndent(map[string]any{"tasks": items}, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
 	path := s.editableFileTasksPath()
-	if os.MkdirAll(filepath.Dir(path), 0o755) != nil {
-		return
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
 	}
 	temporary := path + ".tmp"
-	if os.WriteFile(temporary, raw, 0o600) == nil {
-		_ = os.Rename(temporary, path)
+	if err := os.WriteFile(temporary, raw, 0o600); err != nil {
+		return err
 	}
+	return os.Rename(temporary, path)
 }
 
 func maxInt(a, b int) int {
@@ -954,56 +1130,6 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func (s *Server) searchAPI(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAPI(w, r) {
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeError(w, 405, "method not allowed", "invalid_request_error")
-		return
-	}
-	var body struct {
-		Prompt string `json:"prompt"`
-		Model  string `json:"model"`
-	}
-	if !decodeJSON(w, r, &body) {
-		return
-	}
-	if strings.TrimSpace(body.Prompt) == "" {
-		writeError(w, 400, "prompt is required", "invalid_request_error")
-		return
-	}
-	if body.Model == "" {
-		body.Model = "gpt-4o-search-preview"
-	}
-	request := protocol.ChatRequest{Model: body.Model, Messages: []protocol.Message{{Role: "user", Content: body.Prompt}}}
-	route, ok := model.ResolveChat(body.Model)
-	if !ok {
-		route = model.ChatRoute{Mode: "normal", PoolCandidates: []string{"basic", "super", "heavy"}}
-	}
-	recorder := &responseCapture{header: make(http.Header)}
-	s.completeChat(recorder, r, request, route)
-	if recorder.status >= 400 {
-		w.WriteHeader(recorder.status)
-		_, _ = w.Write(recorder.body.Bytes())
-		return
-	}
-	var chat map[string]any
-	if json.Unmarshal(recorder.body.Bytes(), &chat) != nil {
-		writeError(w, 502, "invalid search response", "upstream_error")
-		return
-	}
-	answer := ""
-	if choices, ok := chat["choices"].([]any); ok && len(choices) > 0 {
-		if choice, ok := choices[0].(map[string]any); ok {
-			if message, ok := choice["message"].(map[string]any); ok {
-				answer = stringValue(message["content"])
-			}
-		}
-	}
-	writeJSON(w, 200, map[string]any{"answer": answer, "sources": []any{}, "status": "completed", "model": body.Model})
 }
 
 func (s *Server) authIdentity(r *http.Request) string {

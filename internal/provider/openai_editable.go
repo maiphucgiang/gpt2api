@@ -1,11 +1,10 @@
 package provider
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -21,9 +20,11 @@ import (
 )
 
 const (
-	EditableFileModel          = "gpt-5-5-thinking"
-	editableFileThinkingEffort = "extended"
-	editableFilePollInterval   = 5 * time.Second
+	EditableFileModel              = "gpt-5-5-thinking"
+	EditableReferenceImageMaxCount = 7
+	EditableReferenceImageMaxBytes = 16 << 20
+	editableFileThinkingEffort     = "extended"
+	editableFilePollMinTimeout     = 20 * time.Minute
 )
 
 const editablePPTPrompt = `我需要你根据用户的需求，来制作一个可以编辑的PPT，你可以使用Agent来做，你不要再继续询问用户问题，内容风格、版式、配色、内容结构和页面信息你可以自行补充并直接执行。整体的流程如下：
@@ -61,14 +62,37 @@ type editableArtifact struct {
 	MessageID    string
 }
 
-func (o *OpenAIImage) ExportEditable(ctx context.Context, account accounts.Account, kind, userPrompt string, inputs []OpenAIImageInput) (EditableExportResult, error) {
+func (o *OpenAIImage) editableFileModel() string {
+	if o != nil {
+		if model := strings.TrimSpace(o.EditableModel); model != "" {
+			return model
+		}
+	}
+	return EditableFileModel
+}
+
+func (o *OpenAIImage) editableReasoningEffort() string {
+	if o != nil {
+		if effort := strings.TrimSpace(o.EditableReasoningEffort); effort != "" {
+			return effort
+		}
+	}
+	return editableFileThinkingEffort
+}
+
+func (o *OpenAIImage) ExportEditable(ctx context.Context, account accounts.Account, kind, userPrompt string, inputs []OpenAIImageInput, checkpoint func(string) error) (result EditableExportResult, err error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	if kind != "ppt" && kind != "psd" {
 		return EditableExportResult{}, fmt.Errorf("editable export kind must be ppt or psd")
 	}
-	if kind == "psd" && len(inputs) == 0 {
-		return EditableExportResult{}, fmt.Errorf("PSD export requires at least one image")
+	if len(inputs) == 0 {
+		return EditableExportResult{}, fmt.Errorf("editable export requires at least one image")
 	}
+	ctx, release, err := o.acquireImageEgress(ctx, account)
+	if err != nil {
+		return EditableExportResult{}, err
+	}
+	defer func() { release(err) }()
 	prompt := editablePPTPrompt
 	if kind == "psd" {
 		prompt = editablePSDPrompt
@@ -92,25 +116,46 @@ func (o *OpenAIImage) ExportEditable(ctx context.Context, account accounts.Accou
 	if err != nil {
 		return EditableExportResult{}, err
 	}
-	conversationID, err := o.startEditable(ctx, account, requirements, conduit, prompt, references)
+	conversationID, err := o.startEditable(ctx, account, requirements, conduit, prompt, references, checkpoint)
+	if err != nil {
+		return EditableExportResult{ConversationID: conversationID}, err
+	}
+	return o.completeEditableExport(ctx, account, conversationID, kind)
+}
+
+func (o *OpenAIImage) ResumeEditable(ctx context.Context, account accounts.Account, conversationID, kind string) (result EditableExportResult, err error) {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if kind != "ppt" && kind != "psd" {
+		return EditableExportResult{}, fmt.Errorf("editable export kind must be ppt or psd")
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if account.Token == "" || conversationID == "" {
+		return EditableExportResult{}, errors.New("account and conversation are required")
+	}
+	ctx, release, err := o.acquireImageEgress(ctx, account)
 	if err != nil {
 		return EditableExportResult{}, err
 	}
+	defer func() { release(err) }()
+	return o.completeEditableExport(ctx, account, conversationID, kind)
+}
+
+func (o *OpenAIImage) completeEditableExport(ctx context.Context, account accounts.Account, conversationID, kind string) (EditableExportResult, error) {
 	artifacts, err := o.pollEditableArtifacts(ctx, account, conversationID, kind)
 	if err != nil {
-		return EditableExportResult{}, err
+		return EditableExportResult{ConversationID: conversationID}, err
 	}
 	primaryArtifact, archiveArtifact := pickEditableArtifacts(artifacts, kind)
 	if primaryArtifact == nil || archiveArtifact == nil {
-		return EditableExportResult{}, fmt.Errorf("editable export completed without %s and zip artifacts", kind)
+		return EditableExportResult{ConversationID: conversationID}, fmt.Errorf("editable export completed without %s and zip artifacts", kind)
 	}
 	primary, err := o.downloadEditableArtifact(ctx, account, conversationID, *primaryArtifact, kind)
 	if err != nil {
-		return EditableExportResult{}, err
+		return EditableExportResult{ConversationID: conversationID}, err
 	}
 	archive, err := o.downloadEditableArtifact(ctx, account, conversationID, *archiveArtifact, "zip")
 	if err != nil {
-		return EditableExportResult{}, err
+		return EditableExportResult{ConversationID: conversationID}, err
 	}
 	return EditableExportResult{ConversationID: conversationID, Primary: primary, Archive: archive}, nil
 }
@@ -122,11 +167,11 @@ func (o *OpenAIImage) prepareEditable(ctx context.Context, account accounts.Acco
 	}
 	payload := map[string]any{
 		"action": "next", "fork_from_shared_post": false, "parent_message_id": "client-created-root",
-		"model": EditableFileModel, "client_prepare_state": "success", "timezone_offset_min": -480,
+		"model": o.editableFileModel(), "client_prepare_state": "success", "timezone_offset_min": -480,
 		"timezone": "Asia/Shanghai", "conversation_mode": map[string]any{"kind": "primary_assistant"},
 		"system_hints": []any{}, "partial_query": map[string]any{"id": firstUUID(), "author": map[string]any{"role": "user"}, "content": map[string]any{"content_type": "text", "parts": []any{prompt}}},
 		"supports_buffering": true, "supported_encodings": []any{"v1"}, "client_contextual_info": map[string]any{"app_name": "chatgpt.com"},
-		"thinking_effort": editableFileThinkingEffort,
+		"thinking_effort": o.editableReasoningEffort(),
 	}
 	if len(mimeTypes) > 0 {
 		payload["attachment_mime_types"] = mimeTypes
@@ -148,7 +193,7 @@ func (o *OpenAIImage) prepareEditable(ctx context.Context, account accounts.Acco
 	return conduit, nil
 }
 
-func (o *OpenAIImage) startEditable(ctx context.Context, account accounts.Account, requirements openAIRequirements, conduit, prompt string, references []openAIImageReference) (string, error) {
+func (o *OpenAIImage) startEditable(ctx context.Context, account accounts.Account, requirements openAIRequirements, conduit, prompt string, references []openAIImageReference, checkpoint func(string) error) (string, error) {
 	parts := make([]any, 0, len(references)+1)
 	attachments := make([]any, 0, len(references))
 	for _, ref := range references {
@@ -166,11 +211,11 @@ func (o *OpenAIImage) startEditable(ctx context.Context, account accounts.Accoun
 	}
 	payload := map[string]any{
 		"action": "next", "messages": []any{map[string]any{"id": firstUUID(), "author": map[string]any{"role": "user"}, "create_time": float64(time.Now().UnixNano()) / 1e9, "content": map[string]any{"content_type": contentType, "parts": parts}, "metadata": metadata}},
-		"parent_message_id": "client-created-root", "model": EditableFileModel, "client_prepare_state": "sent",
+		"parent_message_id": "client-created-root", "model": o.editableFileModel(), "client_prepare_state": "sent",
 		"timezone_offset_min": -480, "timezone": "Asia/Shanghai", "conversation_mode": map[string]any{"kind": "primary_assistant"},
 		"enable_message_followups": true, "system_hints": []any{}, "supports_buffering": true, "supported_encodings": []any{"v1"},
 		"client_contextual_info":               map[string]any{"is_dark_mode": false, "time_since_loaded": 401, "page_height": 1138, "page_width": 803, "pixel_ratio": 2, "screen_height": 1440, "screen_width": 2560, "app_name": "chatgpt.com"},
-		"paragen_cot_summary_display_override": "allow", "force_parallel_switch": "auto", "thinking_effort": editableFileThinkingEffort,
+		"paragen_cot_summary_display_override": "allow", "force_parallel_switch": "auto", "thinking_effort": o.editableReasoningEffort(),
 	}
 	headers := o.requirementHeaders(requirements)
 	headers["X-Conduit-Token"] = conduit
@@ -181,24 +226,30 @@ func (o *OpenAIImage) startEditable(ctx context.Context, account accounts.Accoun
 	}
 	defer response.Body.Close()
 	conversationID := ""
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "[DONE]" {
-			break
-		}
+	lastConversationID := ""
+	var checkpointErr error
+	err = scanOpenAISSE(response.Body, func(raw []byte) bool {
 		var value any
-		if json.Unmarshal([]byte(data), &value) == nil && conversationID == "" {
-			conversationID = nestedString(value, "conversation_id")
+		if json.Unmarshal(raw, &value) != nil {
+			return false
 		}
+		id := nestedString(value, "conversation_id")
+		if id == "" {
+			return false
+		}
+		conversationID = id
+		if checkpoint == nil || id == lastConversationID {
+			return false
+		}
+		lastConversationID = id
+		checkpointErr = checkpoint(id)
+		return checkpointErr != nil
+	})
+	if checkpointErr != nil {
+		return conversationID, checkpointErr
 	}
-	if err := scanner.Err(); err != nil {
-		return "", err
+	if err != nil {
+		return conversationID, err
 	}
 	if conversationID == "" {
 		return "", fmt.Errorf("editable conversation stream returned no conversation id")
@@ -206,35 +257,92 @@ func (o *OpenAIImage) startEditable(ctx context.Context, account accounts.Accoun
 	return conversationID, nil
 }
 
-func (o *OpenAIImage) pollEditableArtifacts(ctx context.Context, account accounts.Account, conversationID, kind string) ([]editableArtifact, error) {
-	timeout := o.RequestTimeout
-	if timeout < 20*time.Minute {
-		timeout = 20 * time.Minute
+func editablePollTimeout(requestTimeout time.Duration, ctx context.Context) time.Duration {
+	timeout := requestTimeout
+	if timeout < editableFilePollMinTimeout {
+		timeout = editableFilePollMinTimeout
 	}
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		path := "/backend-api/conversation/" + url.PathEscape(conversationID)
-		headers := map[string]string{"Accept": "*/*", "Referer": o.BaseURL + "/c/" + conversationID, "X-OpenAI-Target-Route": "/backend-api/conversation/{conversation_id}"}
-		response, err := o.do(ctx, http.MethodGet, path, account, nil, headers, false)
-		if err == nil {
-			var value any
-			if decodeErr := decodeOpenAIJSON(response, &value, "editable conversation"); decodeErr == nil {
-				artifacts := collectEditableArtifacts(value)
-				primary, archive := pickEditableArtifacts(artifacts, kind)
-				if primary != nil && archive != nil {
-					return artifacts, nil
-				}
+	if ctx != nil {
+		if deadline, ok := ctx.Deadline(); ok {
+			if remaining := time.Until(deadline); remaining > 0 && remaining < timeout {
+				timeout = remaining
 			}
-		} else if !isRetryableOpenAIError(err) {
-			return nil, err
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(editableFilePollInterval):
 		}
 	}
-	return nil, &protocol.UpstreamError{Status: http.StatusGatewayTimeout, Message: "editable file result polling timed out", Body: "editable file result polling timed out"}
+	return timeout
+}
+
+func (o *OpenAIImage) pollEditableArtifacts(ctx context.Context, account accounts.Account, conversationID, kind string) ([]editableArtifact, error) {
+	deadline := time.Now().Add(editablePollTimeout(o.RequestTimeout, ctx))
+	var lastErr error
+	rateLimits := 0
+	for time.Now().Before(deadline) {
+		value, err := o.pollConversationOnce(ctx, account, conversationID)
+		if err == nil {
+			rateLimits = 0
+			if terminal := openAIImageTerminalError(value); terminal != nil {
+				return nil, terminal
+			}
+			artifacts := collectEditableArtifacts(value)
+			primary, archive := pickEditableArtifacts(artifacts, kind)
+			if primary != nil && archive != nil {
+				return artifacts, nil
+			}
+			lastErr = errors.New("upstream response contained no editable artifacts")
+		} else if isOpenAIJSONDecodeError(err) || !isRetryableOpenAIError(err) {
+			return nil, err
+		} else {
+			lastErr = err
+			if openAIImageRateLimited(err) {
+				rateLimits++
+			} else {
+				rateLimits = 0
+			}
+		}
+		wait := o.pollInterval
+		if rateLimits > 0 {
+			wait = openAIImagePollBackoff(wait, rateLimits)
+			if retryAfter := accounts.RetryAfterDuration(lastErr); retryAfter > wait {
+				wait = retryAfter
+			}
+		}
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		if wait > 0 {
+			if rateLimits > 0 {
+				notifyOpenAIImageDuration(ctx, "retry_wait_ms", wait)
+			}
+			select {
+			case <-ctx.Done():
+				if openAIImageRateLimited(lastErr) {
+					return nil, fmt.Errorf("editable file result polling interrupted after %d rate-limited responses: %w", rateLimits, lastErr)
+				}
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+	}
+	if openAIImageRateLimited(lastErr) {
+		return nil, fmt.Errorf("editable file result polling timed out after %d rate-limited responses: %w", rateLimits, lastErr)
+	}
+	message := "editable file result polling timed out"
+	if lastErr != nil {
+		message += " (last poll error: " + openAIImagePollErrorSummary(lastErr) + ")"
+	}
+	return nil, &protocol.UpstreamError{Status: http.StatusGatewayTimeout, Message: message, Body: message}
+}
+
+func isOpenAIJSONDecodeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var syntax *json.SyntaxError
+	var unmarshalType *json.UnmarshalTypeError
+	if errors.As(err, &syntax) || errors.As(err, &unmarshalType) {
+		return true
+	}
+	return strings.Contains(err.Error(), "decode ")
 }
 
 func collectEditableArtifacts(value any) []editableArtifact {
@@ -504,15 +612,26 @@ func decodeEditableInput(raw string, index int) (OpenAIImageInput, error) {
 }
 
 func DecodeEditableInputs(values []string) ([]OpenAIImageInput, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("base64_images is empty")
+	}
+	if len(values) > EditableReferenceImageMaxCount {
+		return nil, fmt.Errorf("at most %d reference images are allowed", EditableReferenceImageMaxCount)
+	}
 	result := make([]OpenAIImageInput, 0, len(values))
 	for index, value := range values {
 		input, err := decodeEditableInput(value, index+1)
 		if err != nil {
 			return nil, err
 		}
+		if len(input.Data) == 0 || len(input.Data) > EditableReferenceImageMaxBytes {
+			return nil, fmt.Errorf("image %d exceeds 16MB limit", index+1)
+		}
+		mimeType := strings.ToLower(strings.TrimSpace(input.MIME))
+		if mimeType != "" && !strings.HasPrefix(mimeType, "image/") {
+			return nil, fmt.Errorf("image %d is not an image", index+1)
+		}
 		result = append(result, input)
 	}
 	return result, nil
 }
-
-var _ = bytes.MinRead

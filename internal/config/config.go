@@ -11,53 +11,55 @@ import (
 )
 
 type Config struct {
-	RootDir                string
-	ListenAddr             string
-	DataDir                string
-	StaticDir              string
-	ConfigPath             string
-	AccountsPath           string
-	AuthKeysPath           string
-	APIKey                 string
-	AdminKey               string
-	WebUIKey               string
-	UpstreamURL            string
-	UpstreamAPIKey         string
-	OpenAIBaseURL          string
-	OpenAIOAuthURL         string
-	OpenAIAuthBaseURL      string
-	OpenAIPlatformBaseURL  string
-	OpenAILoginTokenURL    string
-	OpenAIAgentRegisterURL string
-	ProxyURL               string
-	ProxyPool              []string
-	FallbackProxy          string
-	ProxyGroups            []ProxyGroup
-	ResourceProxyURL       string
-	ResourceProxyPool      []string
-	ProxyUpstreamsFile     string
-	FlareSolverrURL        string
-	ClearanceEnabled       bool
-	ClearanceTimeout       time.Duration
-	ImageDataDir           string
-	VideoDataDir           string
-	RegisterPath           string
-	RegisterMailURL        string
-	RegisterCaptchaURL     string
-	RegisterDriverURL      string
-	RegisterDriverKey      string
-	Version                string
-	AllowAnonymous         bool
-	RequestTimeout         time.Duration
-	ChatMaxRetries         int
-	ChatRetryCodes         map[int]bool
-	ImageAccountLimit      int
-	ImageMaxConcurrency    int
-	ImageTaskWorkers       int
-	ImageTaskQueueSize     int
-	ImageTaskRetention     time.Duration
-	ImageRetentionDays     int
-	ImageCleanupInterval   time.Duration
+	RootDir                 string
+	ListenAddr              string
+	DataDir                 string
+	StaticDir               string
+	ConfigPath              string
+	AccountsPath            string
+	AuthKeysPath            string
+	APIKey                  string
+	AdminKey                string
+	WebUIKey                string
+	UpstreamURL             string
+	UpstreamAPIKey          string
+	OpenAIBaseURL           string
+	OpenAIOAuthURL          string
+	OpenAIAuthBaseURL       string
+	OpenAIPlatformBaseURL   string
+	OpenAILoginTokenURL     string
+	OpenAIAgentRegisterURL  string
+	ProxyURL                string
+	ProxyPool               []string
+	FallbackProxy           string
+	ProxyGroups             []ProxyGroup
+	ResourceProxyURL        string
+	ResourceProxyPool       []string
+	ProxyUpstreamsFile      string
+	FlareSolverrURL         string
+	ClearanceEnabled        bool
+	ClearanceTimeout        time.Duration
+	ImageDataDir            string
+	VideoDataDir            string
+	RegisterPath            string
+	RegisterMailURL         string
+	RegisterCaptchaURL      string
+	RegisterDriverURL       string
+	RegisterDriverKey       string
+	Version                 string
+	AllowAnonymous          bool
+	RequestTimeout          time.Duration
+	ChatMaxRetries          int
+	ChatRetryCodes          map[int]bool
+	ImageAccountLimit       int
+	ImageMaxConcurrency     int
+	ImageTaskWorkers        int
+	ImageTaskQueueSize      int
+	ImageTaskRetention      time.Duration
+	ImageRetentionDays      int
+	ImageCleanupInterval    time.Duration
+	EditableModel           string
+	EditableReasoningEffort string
 }
 
 type ProxyGroup struct {
@@ -135,51 +137,53 @@ func Load(root string) (Config, error) {
 
 	dataDir := resolvePath(root, env("GPT2API_DATA_DIR", "data"))
 	cfg := Config{
-		RootDir:                root,
-		ListenAddr:             env("GPT2API_LISTEN_ADDR", env("GO_LISTEN_ADDR", env("CHATGPT2API_LISTEN_ADDR", ":8080"))),
-		DataDir:                dataDir,
-		StaticDir:              resolvePath(root, env("GO_STATIC_DIR", "web_dist")),
-		ConfigPath:             resolvePath(root, env("GO_CONFIG_PATH", filepath.Join(dataDir, "config.json"))),
-		AccountsPath:           resolvePath(root, env("GO_ACCOUNTS_PATH", filepath.Join(dataDir, "accounts.json"))),
-		AuthKeysPath:           resolvePath(root, env("GO_AUTH_KEYS_PATH", filepath.Join(dataDir, "auth_keys.json"))),
-		APIKey:                 env("GPT2API_AUTH_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_AUTH_KEY"))),
-		AdminKey:               env("GPT2API_ADMIN_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_ADMIN_KEY"))),
-		WebUIKey:               env("GPT2API_WEBUI_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY"))),
-		UpstreamURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("GO_UPSTREAM_URL")), "/"),
-		UpstreamAPIKey:         strings.TrimSpace(os.Getenv("GO_UPSTREAM_API_KEY")),
-		OpenAIBaseURL:          strings.TrimRight(env("GO_OPENAI_BASE_URL", "https://chatgpt.com"), "/"),
-		OpenAIOAuthURL:         env("GO_OPENAI_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"),
-		OpenAIAuthBaseURL:      strings.TrimRight(env("GO_OPENAI_AUTH_BASE_URL", "https://auth.openai.com"), "/"),
-		OpenAIPlatformBaseURL:  strings.TrimRight(env("GO_OPENAI_PLATFORM_BASE_URL", "https://platform.openai.com"), "/"),
-		OpenAILoginTokenURL:    env("GO_OPENAI_LOGIN_TOKEN_URL", "https://auth.openai.com/api/accounts/oauth/token"),
-		OpenAIAgentRegisterURL: env("GO_OPENAI_AGENT_REGISTER_URL", "https://auth.openai.com/api/accounts/v1/agent/register"),
-		ProxyURL:               strings.TrimSpace(os.Getenv("GO_PROXY_URL")),
-		ProxyPool:              splitList(os.Getenv("GO_PROXY_POOL")),
-		ResourceProxyURL:       strings.TrimSpace(os.Getenv("GO_RESOURCE_PROXY_URL")),
-		ResourceProxyPool:      splitList(os.Getenv("GO_RESOURCE_PROXY_POOL")),
-		ProxyUpstreamsFile:     resolvePath(root, env("GO_PROXY_UPSTREAMS_FILE", "upstreams.txt")),
-		FlareSolverrURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("GO_FLARESOLVERR_URL")), "/"),
-		ClearanceEnabled:       envBool("GO_CLEARANCE_ENABLED", false),
-		ClearanceTimeout:       time.Duration(envInt("GO_CLEARANCE_TIMEOUT_SECONDS", 60)) * time.Second,
-		ImageDataDir:           resolvePath(root, env("GO_IMAGE_DATA_DIR", filepath.Join(dataDir, "files", "images"))),
-		VideoDataDir:           resolvePath(root, env("GO_VIDEO_DATA_DIR", filepath.Join(dataDir, "files", "videos"))),
-		RegisterPath:           resolvePath(root, env("GO_REGISTER_PATH", filepath.Join(dataDir, "register.json"))),
-		RegisterMailURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_MAIL_URL")), "/"),
-		RegisterCaptchaURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_CAPTCHA_URL")), "/"),
-		RegisterDriverURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_URL")), "/"),
-		RegisterDriverKey:      strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_KEY")),
-		Version:                env("GO_VERSION", "1.2.4-go"),
-		AllowAnonymous:         envBool("GO_ALLOW_ANONYMOUS", false),
-		RequestTimeout:         time.Duration(requestTimeoutSeconds) * time.Second,
-		ChatMaxRetries:         chatMaxRetries,
-		ChatRetryCodes:         parseStatusCodes(env("GO_CHAT_RETRY_CODES", "401,403,429,500,502,503,504")),
-		ImageAccountLimit:      imageAccountConcurrency,
-		ImageMaxConcurrency:    imageMaxConcurrency,
-		ImageTaskWorkers:       min(32, max(1, envInt("GO_IMAGE_TASK_WORKERS", 2))),
-		ImageTaskQueueSize:     min(4096, max(1, envInt("GO_IMAGE_TASK_QUEUE_SIZE", 64))),
-		ImageTaskRetention:     time.Duration(min(720, max(1, envInt("GO_IMAGE_TASK_RETENTION_HOURS", 24)))) * time.Hour,
-		ImageRetentionDays:     imageRetentionDays,
-		ImageCleanupInterval:   time.Duration(imageCleanupIntervalSeconds) * time.Second,
+		RootDir:                 root,
+		ListenAddr:              env("GPT2API_LISTEN_ADDR", env("GO_LISTEN_ADDR", env("CHATGPT2API_LISTEN_ADDR", ":8080"))),
+		DataDir:                 dataDir,
+		StaticDir:               resolvePath(root, env("GO_STATIC_DIR", "web_dist")),
+		ConfigPath:              resolvePath(root, env("GO_CONFIG_PATH", filepath.Join(dataDir, "config.json"))),
+		AccountsPath:            resolvePath(root, env("GO_ACCOUNTS_PATH", filepath.Join(dataDir, "accounts.json"))),
+		AuthKeysPath:            resolvePath(root, env("GO_AUTH_KEYS_PATH", filepath.Join(dataDir, "auth_keys.json"))),
+		APIKey:                  env("GPT2API_AUTH_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_AUTH_KEY"))),
+		AdminKey:                env("GPT2API_ADMIN_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_ADMIN_KEY"))),
+		WebUIKey:                env("GPT2API_WEBUI_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY"))),
+		UpstreamURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("GO_UPSTREAM_URL")), "/"),
+		UpstreamAPIKey:          strings.TrimSpace(os.Getenv("GO_UPSTREAM_API_KEY")),
+		OpenAIBaseURL:           strings.TrimRight(env("GO_OPENAI_BASE_URL", "https://chatgpt.com"), "/"),
+		OpenAIOAuthURL:          env("GO_OPENAI_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"),
+		OpenAIAuthBaseURL:       strings.TrimRight(env("GO_OPENAI_AUTH_BASE_URL", "https://auth.openai.com"), "/"),
+		OpenAIPlatformBaseURL:   strings.TrimRight(env("GO_OPENAI_PLATFORM_BASE_URL", "https://platform.openai.com"), "/"),
+		OpenAILoginTokenURL:     env("GO_OPENAI_LOGIN_TOKEN_URL", "https://auth.openai.com/api/accounts/oauth/token"),
+		OpenAIAgentRegisterURL:  env("GO_OPENAI_AGENT_REGISTER_URL", "https://auth.openai.com/api/accounts/v1/agent/register"),
+		ProxyURL:                strings.TrimSpace(os.Getenv("GO_PROXY_URL")),
+		ProxyPool:               splitList(os.Getenv("GO_PROXY_POOL")),
+		ResourceProxyURL:        strings.TrimSpace(os.Getenv("GO_RESOURCE_PROXY_URL")),
+		ResourceProxyPool:       splitList(os.Getenv("GO_RESOURCE_PROXY_POOL")),
+		ProxyUpstreamsFile:      resolvePath(root, env("GO_PROXY_UPSTREAMS_FILE", "upstreams.txt")),
+		FlareSolverrURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("GO_FLARESOLVERR_URL")), "/"),
+		ClearanceEnabled:        envBool("GO_CLEARANCE_ENABLED", false),
+		ClearanceTimeout:        time.Duration(envInt("GO_CLEARANCE_TIMEOUT_SECONDS", 60)) * time.Second,
+		ImageDataDir:            resolvePath(root, env("GO_IMAGE_DATA_DIR", filepath.Join(dataDir, "files", "images"))),
+		VideoDataDir:            resolvePath(root, env("GO_VIDEO_DATA_DIR", filepath.Join(dataDir, "files", "videos"))),
+		RegisterPath:            resolvePath(root, env("GO_REGISTER_PATH", filepath.Join(dataDir, "register.json"))),
+		RegisterMailURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_MAIL_URL")), "/"),
+		RegisterCaptchaURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_CAPTCHA_URL")), "/"),
+		RegisterDriverURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_URL")), "/"),
+		RegisterDriverKey:       strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_KEY")),
+		Version:                 env("GO_VERSION", "1.2.4-go"),
+		AllowAnonymous:          envBool("GO_ALLOW_ANONYMOUS", false),
+		RequestTimeout:          time.Duration(requestTimeoutSeconds) * time.Second,
+		ChatMaxRetries:          chatMaxRetries,
+		ChatRetryCodes:          parseStatusCodes(env("GO_CHAT_RETRY_CODES", "401,403,429,500,502,503,504")),
+		ImageAccountLimit:       imageAccountConcurrency,
+		ImageMaxConcurrency:     imageMaxConcurrency,
+		ImageTaskWorkers:        min(32, max(1, envInt("GO_IMAGE_TASK_WORKERS", 2))),
+		ImageTaskQueueSize:      min(4096, max(1, envInt("GO_IMAGE_TASK_QUEUE_SIZE", 64))),
+		ImageTaskRetention:      time.Duration(min(720, max(1, envInt("GO_IMAGE_TASK_RETENTION_HOURS", 24)))) * time.Hour,
+		ImageRetentionDays:      imageRetentionDays,
+		ImageCleanupInterval:    time.Duration(imageCleanupIntervalSeconds) * time.Second,
+		EditableModel:           env("GO_EDITABLE_MODEL", "gpt-5-5-thinking"),
+		EditableReasoningEffort: env("GO_EDITABLE_REASONING_EFFORT", "extended"),
 	}
 
 	rawConfig, err := readMap(cfg.ConfigPath)

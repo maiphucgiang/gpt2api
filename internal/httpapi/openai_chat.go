@@ -16,6 +16,10 @@ import (
 )
 
 func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
+	if err := provider.ValidateOpenAIChatRequest(request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
+		return
+	}
 	message := protocol.ExtractMessage(request.Messages)
 	if strings.TrimSpace(message) == "" {
 		writeError(w, http.StatusBadRequest, "messages contain no text", "invalid_request_error")
@@ -67,6 +71,10 @@ func (s *Server) completeOpenAIChat(w http.ResponseWriter, r *http.Request, requ
 }
 
 func (s *Server) streamOpenAIChat(w http.ResponseWriter, r *http.Request, request protocol.ChatRequest, route model.ChatRoute) {
+	if err := provider.ValidateOpenAIChatRequest(request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
+		return
+	}
 	message := protocol.ExtractMessage(request.Messages)
 	if strings.TrimSpace(message) == "" {
 		writeError(w, http.StatusBadRequest, "messages contain no text", "invalid_request_error")

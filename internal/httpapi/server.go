@@ -107,6 +107,12 @@ func New(cfg config.Config) *Server {
 		agentIdentityStore: agentidentity.NewStore(cfg.DataDir, cfg.OpenAIAgentRegisterURL, requestClient),
 		monitor:            newRuntimeMonitor(), registerStore: registerruntime.New(cfg.RegisterPath), registerRuntime: registerruntime.NewRuntime(),
 	}
+	if model := strings.TrimSpace(cfg.EditableModel); model != "" {
+		server.openAIImage.EditableModel = model
+	}
+	if effort := strings.TrimSpace(cfg.EditableReasoningEffort); effort != "" {
+		server.openAIImage.EditableReasoningEffort = effort
+	}
 	server.openAIChat = provider.NewOpenAIChat(server.openAIImage)
 	proxyManager.SetImageNodeResultCallback(server.persistProxyGroupRuntimeResult)
 	server.accountPool.SetInvalidCallback(server.maybeAutoRemoveInvalidAccount)

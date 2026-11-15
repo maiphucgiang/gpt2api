@@ -76,7 +76,7 @@
           <Button size="sm" variant="outline" :disabled="editableFetching" @click="refreshEditableTasks">
             {{ editableFetching ? '刷新中...' : '刷新任务' }}
           </Button>
-          <Button size="sm" variant="primary" :disabled="editableSubmitting || !editablePrompt.trim()" @click="submitEditableTask">
+          <Button size="sm" variant="primary" :disabled="editableSubmitting || !editablePrompt.trim() || !hasEditableImages" @click="submitEditableTask">
             {{ editableSubmitting ? '提交中...' : '提交任务' }}
           </Button>
         </template>
@@ -89,13 +89,31 @@
             rows="9"
             placeholder="输入生成要求"
           ></textarea>
-          <textarea
-            v-model.trim="editableImages"
-            class="debug-textarea debug-textarea--small"
-            rows="4"
-            placeholder="可选：每行一个 base64/data:image 参考图"
-          ></textarea>
-          <div v-if="editableError" class="debug-error">{{ editableError }}</div>
+          <div class="space-y-2">
+            <p class="ui-section-kicker">参考图（必填）</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                id="editable-reference-images"
+                ref="editableImages"
+                type="file"
+                :accept="editableImageAccept"
+                multiple
+                class="sr-only"
+                @change="onEditableImagesChange"
+              />
+              <Button size="sm" variant="outline" :disabled="editableSubmitting" @click="editableImagesInput?.click()">
+                选择图片
+              </Button>
+              <span class="text-xs text-muted-foreground">最多 {{ editableImageMaxCount }} 张，每张不超过 16MB</span>
+            </div>
+            <ul v-if="editableImageFiles.length" class="debug-file-list">
+              <li v-for="item in editableImageFiles" :key="item.id" class="debug-file-item">
+                <span class="truncate">{{ item.name }}</span>
+                <Button size="xs" variant="outline" @click="removeEditableImage(item.id)">移除</Button>
+              </li>
+            </ul>
+          </div>
+          <div v-if="editableImageError || editableError" class="debug-error">{{ editableImageError || editableError }}</div>
         </div>
         <div class="debug-task-list">
           <div v-if="editableTasks.length === 0" class="debug-empty">暂无任务</div>
@@ -139,7 +157,12 @@
             aria-label="对话模型"
             block
           />
-          <select v-model="chatReasoningEffort" class="debug-select" aria-label="思考强度">
+          <select
+            v-if="reasoningEffortOptions.length > 1"
+            v-model="chatReasoningEffort"
+            class="debug-select"
+            aria-label="思考强度"
+          >
             <option v-for="option in reasoningEffortOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
@@ -161,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { Button } from 'nanocat-ui'
 import CodeBlock from '@/components/ai/CodeBlock.vue'
 import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
@@ -171,10 +194,11 @@ import StateBadge from '@/components/ai/StateBadge.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import { debugApi } from '@/api/debug'
 import type { DebugChatCompletion, DebugChatMessage, DebugEditableFileTask, DebugEditableKind, DebugSearchResult } from '@/api/debug'
-import { getAuthToken } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useModelCatalog } from '@/composables/useModelCatalog'
 import { useSettingsStore } from '@/stores/settings'
+import { buildDebugSearchSkillInstallPrompt, debugChatReasoningEffortOptions } from '@/views/debugCenterView'
+import { useEditableReferenceImages } from '@/views/debugCenterEditableImages'
 
 type DebugTab = 'search' | 'skills' | 'ppt' | 'psd' | 'chat'
 
@@ -223,117 +247,37 @@ const chatRaw = ref<DebugChatCompletion | null>(null)
 const chatLoading = ref(false)
 const chatError = ref('')
 const chatRawJson = computed(() => JSON.stringify(chatRaw.value || { messages: [] }, null, 2))
-const reasoningEffortOptions = [
-  { label: '默认思考', value: '' },
-  { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
-  { label: '高', value: 'high' },
-  { label: '超高', value: 'extended' },
-]
+const reasoningEffortOptions = computed(() => debugChatReasoningEffortOptions(chatModel.value))
 
 const editablePrompt = ref('')
-const editableImages = ref('')
 const editableTasks = ref<DebugEditableFileTask[]>([])
 const editableSubmitting = ref(false)
 const editableFetching = ref(false)
 const editableError = ref('')
+const editableImagesInput = useTemplateRef<HTMLInputElement>('editableImages')
+const {
+  files: editableImageFiles,
+  error: editableImageError,
+  hasFiles: hasEditableImages,
+  addFiles: addEditableImages,
+  removeFile: removeEditableImage,
+  clear: clearEditableImages,
+  toBase64Images,
+  accept: editableImageAccept,
+  maxCount: editableImageMaxCount,
+} = useEditableReferenceImages()
 
 const apiBaseUrl = computed(() => {
   const raw = import.meta.env.VITE_API_URL || window.location.origin
   return raw.replace(/\/$/, '')
 })
-const authKey = computed(() => getAuthToken())
-const skillZh = computed(() => `---
-name: gpt2api-search
-description: 当用户需要联网搜索、查询最新信息、核实事实或需要来源链接时，调用本地 gpt2api 搜索接口。
----
-
-# gpt2api 搜索
-
-当用户要求联网搜索、查询最新信息、核实资料、查新闻、查价格、查文档更新或需要来源链接时，使用这个 skill。
-
-## 接口
-
-POST ${apiBaseUrl.value}/v1/search
-
-Headers:
-
-Authorization: Bearer ${authKey.value}
-Content-Type: application/json
-
-Body:
-
-{
-  "prompt": "<用户要搜索的问题>"
-}
-
-## 返回处理
-
-- 使用接口返回的 \`answer\` 作为主要回答。
-- 如果有 \`sources\`，在回答里附上来源链接。
-- 如果接口报错，简要说明错误并询问是否重试。`)
-
-const skillEn = computed(() => `---
-name: gpt2api-search
-description: Use when current web search is needed through this gpt2api server. Call the configured HTTP search endpoint with a prompt and return the answer with source URLs.
----
-
-# gpt2api Search
-
-Use this skill when the user asks for current web search, online lookup, recent information, or source-backed answers.
-
-## Request
-
-POST ${apiBaseUrl.value}/v1/search
-
-Headers:
-
-Authorization: Bearer ${authKey.value}
-Content-Type: application/json
-
-JSON body:
-
-{
-  "prompt": "<search question>"
-}
-
-## Response handling
-
-- Use \`answer\` as the main response.
-- Include source URLs from \`sources\` when available.
-- If the endpoint returns an error, summarize the error and ask whether to retry.`)
-
-const skillInstallPromptZh = computed(() => `请帮我在本机安装一个用于联网搜索的 skill。
-
-要求：
-1. 按当前环境的 skill 安装规范，把它安装成本地 skill。
-2. skill 名称为：gpt2api-search
-3. 文件名为：SKILL.md
-4. 只创建或更新这个 skill 文件，不要修改其他无关文件。
-
-SKILL.md 内容：
-
-\`\`\`markdown
-${skillZh.value}
-\`\`\``)
-
-const skillInstallPromptEn = computed(() => `Please install a local web-search skill on this machine.
-
-Requirements:
-1. Install this as a local skill according to the current environment's skill rules.
-2. Skill name: gpt2api-search
-3. File name: SKILL.md
-4. Only create or update this skill file.
-
-SKILL.md content:
-
-\`\`\`markdown
-${skillEn.value}
-\`\`\``)
+const skillInstallPromptZh = computed(() => buildDebugSearchSkillInstallPrompt(apiBaseUrl.value, 'zh'))
+const skillInstallPromptEn = computed(() => buildDebugSearchSkillInstallPrompt(apiBaseUrl.value, 'en'))
 
 const currentEditableKind = computed<DebugEditableKind>(() => activeTab.value === 'psd' ? 'psd' : 'ppt')
 
 watch(activeTab, (tab) => {
+  clearEditableImages()
   if (tab === 'ppt') {
     editablePrompt.value = '生成一个 gpt2api 项目架构说明 PPT，包含后端链路、前端控制台、账号池、日志和图片链路。'
     void refreshEditableTasks()
@@ -382,7 +326,7 @@ async function sendChat() {
   chatLoading.value = true
   chatError.value = ''
   try {
-    const result = await debugApi.chat(chatModel.value, nextMessages, chatReasoningEffort.value)
+    const result = await debugApi.chat(chatModel.value, nextMessages, reasoningEffortOptions.value.length > 1 ? chatReasoningEffort.value : '')
     chatRaw.value = result
     chatMessages.value = [
       ...nextMessages,
@@ -432,13 +376,19 @@ async function refreshEditableTasks() {
   }
 }
 
+function onEditableImagesChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  addEditableImages(input.files ? Array.from(input.files) : [])
+  input.value = ''
+}
+
 async function submitEditableTask() {
   const prompt = editablePrompt.value.trim()
-  if (!prompt || editableSubmitting.value) return
+  if (!prompt || editableSubmitting.value || !hasEditableImages.value) return
   editableSubmitting.value = true
   editableError.value = ''
   try {
-    const images = editableImages.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+    const images = await toBase64Images()
     const task = await debugApi.createEditableFileTask(currentEditableKind.value, { prompt, base64_images: images })
     editableTasks.value = [task, ...editableTasks.value].slice(0, 20)
     toast.success('任务已提交')
@@ -498,8 +448,22 @@ function openUrl(url: string) {
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
 }
 
-.debug-textarea--small {
-  min-height: 6rem;
+.debug-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.debug-file-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .debug-error {

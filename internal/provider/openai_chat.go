@@ -52,7 +52,10 @@ func (c *OpenAIChat) Stream(ctx context.Context, account accounts.Account, reque
 	if err != nil {
 		return err
 	}
-	payload := openAIChatPayload(request)
+	payload, err := openAIChatPayload(request)
+	if err != nil {
+		return err
+	}
 	headers := c.Image.requirementHeaders(requirements)
 	headers["Accept"] = "text/event-stream"
 	response, err := c.Image.do(ctx, "POST", "/backend-api/conversation", account, payload, headers, true)
@@ -149,10 +152,18 @@ func (s *openAIChatState) event(value any) (OpenAIChatEvent, error) {
 	return event, nil
 }
 
-func openAIChatPayload(request protocol.ChatRequest) map[string]any {
+func ValidateOpenAIChatRequest(request protocol.ChatRequest) error {
+	_, err := openAIChatPayload(request)
+	return err
+}
+
+func openAIChatPayload(request protocol.ChatRequest) (map[string]any, error) {
 	messages := make([]any, 0, len(request.Messages))
 	for _, message := range request.Messages {
-		text := openAIMessageText(message.Content)
+		text, err := openAIMessageText(message.Content)
+		if err != nil {
+			return nil, err
+		}
 		if text == "" {
 			continue
 		}
@@ -193,30 +204,57 @@ func openAIChatPayload(request protocol.ChatRequest) map[string]any {
 		"websocket_request_id":          firstUUID(),
 		"client_contextual_info":        map[string]any{"is_dark_mode": false, "time_since_loaded": 120, "page_height": 900, "page_width": 1400, "pixel_ratio": 2, "screen_height": 1440, "screen_width": 2560},
 	}
-	if request.ReasoningEffort != "" && request.ReasoningEffort != "none" {
-		payload["thinking_effort"] = request.ReasoningEffort
-	}
-	return payload
+	return payload, nil
 }
 
-func openAIMessageText(value any) string {
+func openAIMessageText(value any) (string, error) {
 	switch typed := value.(type) {
+	case nil:
+		return "", nil
 	case string:
-		return typed
+		return typed, nil
 	case []any:
 		parts := make([]string, 0, len(typed))
 		for _, raw := range typed {
-			part, ok := raw.(map[string]any)
-			if !ok {
-				continue
+			text, err := openAIMessagePartText(raw)
+			if err != nil {
+				return "", err
 			}
-			if stringValue(part["type"]) == "text" {
-				parts = append(parts, stringValue(part["text"]))
+			if text != "" {
+				parts = append(parts, text)
 			}
 		}
-		return strings.Join(parts, "\n")
+		return strings.Join(parts, "\n"), nil
+	case map[string]any:
+		return openAIMessagePartText(typed)
 	default:
-		return ""
+		return "", fmt.Errorf("unsupported chat content")
+	}
+}
+
+func openAIMessagePartText(value any) (string, error) {
+	switch typed := value.(type) {
+	case string:
+		return typed, nil
+	case map[string]any:
+		kind := strings.ToLower(strings.TrimSpace(stringValue(typed["type"])))
+		switch kind {
+		case "image_url", "input_image", "image":
+			return "", fmt.Errorf("image content is not supported for web chat")
+		case "", "text", "input_text":
+			if typed["image_url"] != nil || typed["input_image"] != nil {
+				return "", fmt.Errorf("image content is not supported for web chat")
+			}
+			text := stringValue(typed["text"])
+			if text == "" {
+				text = stringValue(typed["content"])
+			}
+			return text, nil
+		default:
+			return "", fmt.Errorf("unsupported chat content type %q", kind)
+		}
+	default:
+		return "", fmt.Errorf("unsupported chat content part")
 	}
 }
 

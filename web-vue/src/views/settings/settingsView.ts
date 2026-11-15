@@ -317,7 +317,7 @@ export function buildApiDocItems(
       method: 'POST',
       path: '/v1/editable-file-tasks',
       description: '统一创建 PPT/PSD 文件任务，kind 可填 ppt 或 psd。',
-      example: `curl ${openAIBaseUrl}/editable-file-tasks \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"kind":"ppt","prompt":"做一份产品发布会 PPT"}'`,
+      example: `curl ${openAIBaseUrl}/editable-file-tasks \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"kind":"ppt","prompt":"做一份产品发布会 PPT","base64_images":["data:image/png;base64,<BASE64>"]}'`,
     },
     {
       title: '查询可编辑文件任务',
@@ -331,14 +331,14 @@ export function buildApiDocItems(
       method: 'POST',
       path: '/v1/ppt/generations',
       description: '直接创建 PPT 生成任务，返回任务 ID 后再查询状态。',
-      example: `curl ${openAIBaseUrl}/ppt/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"prompt":"生成一份市场分析 PPT"}'`,
+      example: `curl ${openAIBaseUrl}/ppt/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"prompt":"生成一份市场分析 PPT","base64_images":["data:image/png;base64,<BASE64>"]}'`,
     },
     {
       title: 'PSD 生成任务',
       method: 'POST',
       path: '/v1/psd/generations',
       description: '直接创建 PSD 生成任务，返回任务 ID 后再查询状态。',
-      example: `curl ${openAIBaseUrl}/psd/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"prompt":"生成一张电商海报 PSD"}'`,
+      example: `curl ${openAIBaseUrl}/psd/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey}" \\\n  -d '{"prompt":"生成一张电商海报 PSD","base64_images":["data:image/png;base64,<BASE64>"]}'`,
     },
     {
       title: '文件下载',

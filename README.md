@@ -81,6 +81,8 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 | `GO_IMAGE_TASK_WORKERS` | 控制台图片任务工作线程，默认 2，按单张输出计 |
 | `GO_IMAGE_TASK_QUEUE_SIZE` | 控制台图片等待容量，默认 64 |
 | `GO_IMAGE_TASK_RETENTION_HOURS` | 控制台终态任务记录保留时间，默认 24 小时 |
+| `GO_EDITABLE_MODEL` | PPT/PSD 上游固定模型，默认 `gpt-5-5-thinking` |
+| `GO_EDITABLE_REASONING_EFFORT` | PPT/PSD 上游思考强度，默认 `extended` |
 | `GO_IMAGE_SCHEDULER_KEY` | 源码运行的内部调度密钥；Compose 使用 `IMAGE_SCHEDULER_INTERNAL_KEY` 映射 |
 
 `GO_CONFIG_PATH`、`GO_ACCOUNTS_PATH`、`GO_AUTH_KEYS_PATH`、`GO_REGISTER_PATH` 可覆盖具体路径。默认配置写入 `data/config.json`；首次运行可复制旧根目录 `config.json`，不覆盖已有数据配置。历史认证环境变量仍可作为回退。

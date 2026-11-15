@@ -27,6 +27,14 @@
 
 - Responses 协议复用 Chat 流式管道：SSE 事件增量发出并立即 flush，客户端取消向上游传播，不再等完整答案后一次性写出；新增 Responses 请求校验。
 
+### 可编辑文件任务
+
+- DebugCenter 的 PPT/PSD 参考图改为本地图片多选上传：显示已选文件并可移除，提交前在前端转成后端所需格式，界面不出现 base64 文本；两种任务都要求至少一张参考图。
+- editable 只调度 `accountpolicy.SubscriptionEligible` 的付费订阅，拒绝 Free、未知、失效或过期核验，不信任可编辑 plan 字段，不做 Free 兜底。
+- 上游接受后立即持久化原会话 ID 和原账号稳定 ID，再轮询；重启后对 queued/running 且有检查点的任务绑定原账号续查，禁止重新 POST；无检查点的旧任务明确不可续查。
+- 轮询复用图片/搜索的 Retry-After 与有上限指数退避；429 不换代理；上游终态立即失败，坏 JSON 明确返回。任务总超时固定 25 分钟，轮询至少 20 分钟并受任务上下文封顶，不跟 `GO_REQUEST_TIMEOUT_SECONDS`。本地解码、检查点或落盘错误不记账号失败/冷却；仅本地错误且上游已接受时记业务成功。已接受后的上游 429/500 仍按真实状态记失败和冷却，不重新生成。
+- 固定模型与思考强度改为 `GO_EDITABLE_MODEL`、`GO_EDITABLE_REASONING_EFFORT`，默认 `gpt-5-5-thinking` / `extended`。
+
 ### 控制台
 
 - 修复概览六张图表的模板引用绑定（`useTemplateRef` 显式绑定），补充首次加载、刷新、缩放、销毁和页面恢复回归；账号页展示凭证归属与来源渠道。

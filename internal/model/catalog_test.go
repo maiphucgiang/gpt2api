@@ -46,6 +46,20 @@ func TestPublicBSGModelsAreNotCataloguedOrRouted(t *testing.T) {
 	}
 }
 
+func TestSearchPreviewSlugIsNotCataloguedOrRouted(t *testing.T) {
+	for _, id := range []string{"gpt-4o-search-preview", "gpt-4o-mini-search-preview", "gpt-5-search-api"} {
+		if _, ok := Find(Catalog(), id); ok {
+			t.Fatalf("catalog still lists %s", id)
+		}
+		if _, ok := ResolveChat(id); ok {
+			t.Fatalf("chat still routes %s", id)
+		}
+	}
+	if _, ok := ResolveChat("gpt-5-5"); !ok {
+		t.Fatal("default search model gpt-5-5 must stay routable")
+	}
+}
+
 func TestUnknownImageModelsAreNotRoutedToOpenAI(t *testing.T) {
 	for _, id := range []string{"gpt-image-2.50", "gpt-image-2.5-unknown", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.6-unknown", "gpt-image-3", "unsupported-image"} {
 		if IsOpenAIImage(id) {

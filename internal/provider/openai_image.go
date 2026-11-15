@@ -34,13 +34,15 @@ import (
 
 // OpenAIImage implements the authenticated ChatGPT Web image flow.
 type OpenAIImage struct {
-	BaseURL        string
-	Client         *http.Client
-	Proxy          *proxyruntime.Manager
-	RequestTimeout time.Duration
-	pollInterval   time.Duration
-	browserMu      sync.Mutex
-	browsers       map[string]*browserHTTP
+	BaseURL                 string
+	Client                  *http.Client
+	Proxy                   *proxyruntime.Manager
+	RequestTimeout          time.Duration
+	EditableModel           string
+	EditableReasoningEffort string
+	pollInterval            time.Duration
+	browserMu               sync.Mutex
+	browsers                map[string]*browserHTTP
 }
 
 type OpenAIImageInput struct {
@@ -118,12 +120,14 @@ func NewOpenAIImage(baseURL string, client *http.Client, proxy *proxyruntime.Man
 		timeout = 300 * time.Second
 	}
 	return &OpenAIImage{
-		BaseURL:        strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		Client:         client,
-		Proxy:          proxy,
-		RequestTimeout: timeout,
-		pollInterval:   5 * time.Second,
-		browsers:       map[string]*browserHTTP{},
+		BaseURL:                 strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		Client:                  client,
+		Proxy:                   proxy,
+		RequestTimeout:          timeout,
+		EditableModel:           EditableFileModel,
+		EditableReasoningEffort: editableFileThinkingEffort,
+		pollInterval:            5 * time.Second,
+		browsers:                map[string]*browserHTTP{},
 	}
 }
 

@@ -28,6 +28,21 @@ func TestDataDirectoryOwnsAllDefaultPersistentPaths(t *testing.T) {
 	}
 }
 
+func TestEditableModelAndReasoningEffortDefaults(t *testing.T) {
+	t.Setenv("GO_EDITABLE_MODEL", "")
+	t.Setenv("GO_EDITABLE_REASONING_EFFORT", "")
+	cfg, err := Load(t.TempDir())
+	if err != nil || cfg.EditableModel != "gpt-5-5-thinking" || cfg.EditableReasoningEffort != "extended" {
+		t.Fatalf("defaults: %q %q %v", cfg.EditableModel, cfg.EditableReasoningEffort, err)
+	}
+	t.Setenv("GO_EDITABLE_MODEL", "gpt-5-5")
+	t.Setenv("GO_EDITABLE_REASONING_EFFORT", "low")
+	cfg, err = Load(t.TempDir())
+	if err != nil || cfg.EditableModel != "gpt-5-5" || cfg.EditableReasoningEffort != "low" {
+		t.Fatalf("override: %q %q %v", cfg.EditableModel, cfg.EditableReasoningEffort, err)
+	}
+}
+
 func TestAuthEnvironmentAliasesPreserveExistingInstallations(t *testing.T) {
 	t.Setenv("GPT2API_AUTH_KEY", "")
 	t.Setenv("CHATGPT2API_AUTH_KEY", "legacy-test-key")

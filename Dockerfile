@@ -37,7 +37,6 @@ COPY --from=go-build /gpt2api /app/gpt2api
 COPY --from=web-build /src/web-vue/dist /app/web_dist
 COPY VERSION CHANGELOG.md config.example.json ./
 COPY LICENSE THIRD_PARTY_LICENSE ./
-COPY licenses ./licenses
 COPY services/default_prompt_library.json /app/services/default_prompt_library.json
 RUN mkdir -p /app/data /app/logs && chown -R app:app /app
 USER app

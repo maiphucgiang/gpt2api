@@ -17,6 +17,6 @@ describe('credential ownership labels', () => {
     const pending = { ...ready, credential_sync_status: 'pending' }
     expect(accountSourceText(pending)).toContain('等待渠道更新')
     expect(accountRowSignature(ready)).not.toBe(accountRowSignature(pending))
-    expect(accountRowSignature(ready)).not.toBe(accountRowSignature({ ...ready, bps_subscription_eligible: true }))
+    expect(accountRowSignature(ready)).not.toBe(accountRowSignature({ ...ready, enabled: false }))
   })
 })

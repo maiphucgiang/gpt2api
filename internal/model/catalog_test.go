@@ -26,6 +26,26 @@ func TestImageModelChatCompatibilityRoute(t *testing.T) {
 	}
 }
 
+func TestWebChatSlugsStayOnOpenAI(t *testing.T) {
+	for _, id := range []string{"gpt-5-6-sol", "gpt-5-6-luna", "gpt-5-6-terra", "gpt-5-5"} {
+		route, ok := ResolveChat(id)
+		if !ok || !route.OpenAI || route.Image {
+			t.Fatalf("Web route changed: %s", id)
+		}
+	}
+}
+
+func TestPublicBSGModelsAreNotCataloguedOrRouted(t *testing.T) {
+	for _, id := range []string{"bsg/gpt-6-astra", "bsg/gpt-5.6-sol", "bsg/gpt-5.6-luna", "bsg/gpt-5.6-terra"} {
+		if _, ok := Find(Catalog(), id); ok {
+			t.Fatalf("catalog still lists %s", id)
+		}
+		if route, ok := ResolveChat(id); ok {
+			t.Fatalf("chat still routes %s: %+v", id, route)
+		}
+	}
+}
+
 func TestUnknownImageModelsAreNotRoutedToOpenAI(t *testing.T) {
 	for _, id := range []string{"gpt-image-2.50", "gpt-image-2.5-unknown", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.6-unknown", "gpt-image-3", "unsupported-image"} {
 		if IsOpenAIImage(id) {

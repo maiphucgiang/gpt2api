@@ -2,11 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,17 +19,22 @@ import (
 )
 
 type externalCredentialFixture struct {
-	s                      *Server
-	old, next              string
-	reads, oauth, business atomic.Int32
-	sourceStatus           atomic.Int32
-	plan                   atomic.Value
-	gate                   chan struct{}
+	s            *Server
+	old, next    string
+	reads, oauth atomic.Int32
+	sourceStatus atomic.Int32
+	plan         atomic.Value
+	gate         chan struct{}
+}
+
+func testChatGPTToken(id string, expiry time.Time) string {
+	raw, _ := json.Marshal(map[string]any{"https://api.openai.com/auth": map[string]any{"chatgpt_account_id": id}, "exp": expiry.Unix()})
+	return "e30." + base64.RawURLEncoding.EncodeToString(raw) + ".test"
 }
 
 func newExternalCredentialFixture(t *testing.T, owner string, expiry time.Time) *externalCredentialFixture {
 	t.Helper()
-	f := &externalCredentialFixture{old: bpsTestToken("workspace", expiry), next: bpsTestToken("workspace", time.Now().Add(2*time.Hour))}
+	f := &externalCredentialFixture{old: testChatGPTToken("workspace", expiry), next: testChatGPTToken("workspace", time.Now().Add(2*time.Hour))}
 	f.plan.Store("plus")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -68,13 +73,6 @@ func newExternalCredentialFixture(t *testing.T, owner string, expiry time.Time) 
 			_ = json.NewEncoder(w).Encode(map[string]any{"accounts": map[string]any{"workspace": map[string]any{"account": map[string]any{"account_id": "workspace", "plan_type": f.plan.Load()}, "entitlement": map[string]any{"has_active_subscription": f.plan.Load() == "plus", "expires_at": time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)}}}})
 		case "/backend-api/conversation/init":
 			_ = json.NewEncoder(w).Encode(map[string]any{"limits_progress": []any{map[string]any{"feature_name": "image_gen", "remaining": 9}}})
-		case "/basispoints/api/responses":
-			f.business.Add(1)
-			if r.Header.Get("Authorization") == "Bearer "+f.old {
-				http.Error(w, "expired", 401)
-				return
-			}
-			bpsFixture(w, []any{bpsFixtureMessage()})
 		default:
 			t.Error("unexpected endpoint", r.URL.Path)
 			http.NotFound(w, r)
@@ -82,7 +80,7 @@ func newExternalCredentialFixture(t *testing.T, owner string, expiry time.Time) 
 	}))
 	t.Cleanup(upstream.Close)
 	cfg := adminTestConfig(t.TempDir())
-	cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL, cfg.BPSBaseURL, cfg.BPSEnabled = upstream.URL, upstream.URL+"/oauth/token", upstream.URL, true
+	cfg.OpenAIBaseURL, cfg.OpenAIOAuthURL = upstream.URL, upstream.URL+"/oauth/token"
 	f.s = New(cfg)
 	t.Cleanup(func() { _ = f.s.Close() })
 	if err := f.s.external.saveCPAList([]externalCPAPool{{ID: "source", BaseURL: upstream.URL, SecretKey: "source-key"}}); err != nil {
@@ -214,45 +212,5 @@ func TestExternalConcurrent401SharesSourceSynchronization(t *testing.T) {
 	}
 	if f.reads.Load() != 1 || f.oauth.Load() != 0 {
 		t.Fatal("concurrent synchronization not coalesced", f.reads.Load())
-	}
-}
-
-func TestBPSExternal401RechecksSubscriptionBeforeRetry(t *testing.T) {
-	for _, plan := range []string{"plus", "free"} {
-		t.Run(plan, func(t *testing.T) {
-			f := newExternalCredentialFixture(t, "cpa", time.Now().Add(time.Hour))
-			f.plan.Store(plan)
-			w := bpsRequest(f.s, "/v1/responses", f.s.cfg.APIKey, map[string]any{"model": "bsg/gpt-6-astra", "input": "hello"})
-			if plan == "free" {
-				if w.Code != 403 || !strings.Contains(w.Body.String(), "bps_subscription_required") || f.business.Load() != 1 {
-					t.Fatal("downgraded account retried BPS", w.Code, w.Body.String())
-				}
-			} else if w.Code != 200 || f.business.Load() != 2 {
-				t.Fatal(w.Code, w.Body.String())
-			}
-			if f.oauth.Load() != 0 || f.reads.Load() != 1 {
-				t.Fatal("BPS did not delegate credential renewal")
-			}
-		})
-	}
-}
-
-func TestBPSRejectsFreeAndUnknownForEveryProtocol(t *testing.T) {
-	for _, plan := range []string{"free", "", "unrecognized"} {
-		f := newExternalCredentialFixture(t, "cpa", time.Now().Add(time.Hour))
-		rows, _ := f.s.store.AccountList()
-		_, err := f.s.store.UpdateAccountIfCredentialsMatch(store.CredentialsOf(rows[0]), map[string]any{"type": "pro", "subscription_plan": plan})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, path := range []string{"/v1/responses", "/v1/chat/completions", "/v1/messages"} {
-			w := bpsRequest(f.s, path, f.s.cfg.APIKey, map[string]any{"model": "bsg/gpt-6-astra", "input": "hello", "messages": []any{map[string]any{"role": "user", "content": "hello"}}})
-			if w.Code != 503 {
-				t.Fatal("ineligible subscription admitted", plan, path, w.Code, w.Body.String())
-			}
-		}
-		if f.business.Load() != 0 || f.oauth.Load() != 0 {
-			t.Fatal("ineligible account reached upstream")
-		}
 	}
 }

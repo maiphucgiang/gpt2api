@@ -39,10 +39,6 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "model not found", "invalid_request_error")
 		return
 	}
-	if route.BPS {
-		s.bpsResponses(w, r, raw)
-		return
-	}
 	messages, err := protocol.ParseResponsesInput(request.Input, request.Instructions)
 	if err == nil {
 		err = validateResponsesRequest(request, route, messages)

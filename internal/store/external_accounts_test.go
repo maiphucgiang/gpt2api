@@ -22,7 +22,7 @@ func TestExternalUpsertPreservesLocalIdentityAndPreferences(t *testing.T) {
 	if rows[0]["refresh_token"] != nil {
 		t.Fatal("source refresh token retained")
 	}
-	_, err = s.UpdateAccountIfCredentialsMatch(CredentialsOf(rows[0]), map[string]any{"enabled": false, "bps_enabled": false, "group_id": "group", "success": 8, "fail": 3, "subscription_checked_at": "old"})
+	_, err = s.UpdateAccountIfCredentialsMatch(CredentialsOf(rows[0]), map[string]any{"enabled": false, "proxy": "http://127.0.0.1:1080", "group_id": "group", "success": 8, "fail": 3, "subscription_checked_at": "old"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestExternalUpsertPreservesLocalIdentityAndPreferences(t *testing.T) {
 		t.Fatal("source import duplicated account", err)
 	}
 	x := rows[0]
-	if AccountID(x) != id || x["enabled"] != false || x["bps_enabled"] != false || x["group_id"] != "group" || x["success"] != float64(8) || x["fail"] != float64(3) || x["access_token"] != "second" || x["refresh_token"] != nil || x["subscription_checked_at"] != nil {
+	if AccountID(x) != id || x["enabled"] != false || x["proxy"] != "http://127.0.0.1:1080" || x["group_id"] != "group" || x["success"] != float64(8) || x["fail"] != float64(3) || x["access_token"] != "second" || x["refresh_token"] != nil || x["subscription_checked_at"] != nil {
 		t.Fatal("identity, preferences, counters or verification state changed incorrectly")
 	}
 	if _, _, err = s.UpsertExternalAccount(externalStoreFixture("third"), versions); !errors.Is(err, ErrCredentialsChanged) {

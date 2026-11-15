@@ -5,7 +5,6 @@ go 1.23
 require (
 	github.com/bogdanfinn/fhttp v0.5.34
 	github.com/bogdanfinn/tls-client v1.9.2
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	golang.org/x/crypto v0.29.0
 )
 

@@ -120,7 +120,6 @@ export function accountRowSignature(item: Account): string {
     item.source_type,
     item.credential_sync_error,
     item.last_credential_sync_at,
-    item.bps_subscription_eligible ? 1 : 0,
     item.group_id,
     item.proxy,
     item.checkout_link_status,

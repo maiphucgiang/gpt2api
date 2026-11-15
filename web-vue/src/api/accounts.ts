@@ -26,7 +26,6 @@ export interface Account {
   credential_sync_status?: string
   credential_sync_error?: string
   last_credential_sync_at?: string
-  bps_subscription_eligible?: boolean
   agent_identity_status?: string
   agent_runtime_id?: string
   survival_status?: string
@@ -481,7 +480,6 @@ function mapBackendAccount(item: BackendAccount, index: number, usedIds: Set<str
     credential_sync_status: cleanString(item.credential_sync_status),
     credential_sync_error: cleanString(item.credential_sync_error),
     last_credential_sync_at: cleanString(item.last_credential_sync_at),
-    bps_subscription_eligible: item.bps_subscription_eligible === true,
     agent_identity_status: cleanString(item.agent_identity_status),
     agent_runtime_id: cleanString(item.agent_runtime_id),
     survival_status: cleanString(item.survival_status),

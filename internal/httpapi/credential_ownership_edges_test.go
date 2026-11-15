@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/maiphucgiang/gpt2api/internal/accounts"
-	"github.com/maiphucgiang/gpt2api/internal/bps"
 	"github.com/maiphucgiang/gpt2api/internal/store"
 )
 
@@ -94,24 +93,5 @@ func TestDeletedConnectionCannotCompleteInFlightSync(t *testing.T) {
 	close(release)
 	if err := <-result; err == nil {
 		t.Fatal("deleted connection still authorized a credential update")
-	}
-}
-
-func TestBPSContinuationCannotSwitchFromFreeToPaidAccount(t *testing.T) {
-	f := newExternalCredentialFixture(t, "cpa", time.Now().Add(time.Hour))
-	rows, _ := f.s.store.AccountList()
-	paid := cloneMap(rows[0])
-	paid["id"] = "other"
-	paid["access_token"] = f.next
-	paid["credential_remote_id"] = "other"
-	if _, _, _, err := f.s.store.AddAccounts(nil, []map[string]any{paid}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.s.store.UpdateAccountIfCredentialsMatch(store.CredentialsOf(rows[0]), map[string]any{"subscription_plan": "free"}); err != nil {
-		t.Fatal(err)
-	}
-	_, err := f.s.runBPS(httptest.NewRequest(http.MethodPost, "/v1/responses", nil), "caller", "external", bps.Object{"model": "bsg/gpt-6-astra", "input": "result"}, nil, nil)
-	if err == nil || f.business.Load() != 0 {
-		t.Fatal("continuation used ineligible or replacement account")
 	}
 }

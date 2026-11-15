@@ -34,10 +34,6 @@ func (s Spec) Public() map[string]any {
 func Catalog() []Spec {
 	created := time.Now().Unix()
 	items := []Spec{
-		{BPSPrefix + "gpt-6-astra", "GPT-6 Astra (BPS)", "openai", created, Chat, true},
-		{BPSPrefix + "gpt-5.6-sol", "GPT-5.6 Sol (BPS)", "openai", created, Chat, true},
-		{BPSPrefix + "gpt-5.6-luna", "GPT-5.6 Luna (BPS)", "openai", created, Chat, true},
-		{BPSPrefix + "gpt-5.6-terra", "GPT-5.6 Terra (BPS)", "openai", created, Chat, true},
 		{"auto", "Auto", "openai", created, Chat, true},
 		{"gpt-5", "GPT-5", "openai", created, Chat, true},
 		{"gpt-5-1", "GPT-5.1", "openai", created, Chat, true},

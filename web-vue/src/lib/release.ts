@@ -14,13 +14,39 @@ export function parseChangelog(content: string): ReleaseInfo[] {
       return {
         version: version.trim(),
         date: date.trim(),
-        items: lines
-          .map((line) => line.trim().match(/^\+\s+\[(.+?)]\s+(.+)$/))
-          .filter((match): match is RegExpMatchArray => Boolean(match))
-          .map((match) => ({ type: match[1], content: match[2] })),
+        items: parseReleaseItems(lines),
       }
     })
     .filter((release) => release.items.length)
+}
+
+function parseReleaseItems(lines: string[]): { type: string; content: string }[] {
+  const items: { type: string; content: string }[] = []
+  let groupType = ''
+
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) continue
+
+    const group = line.match(/^###\s+(.+)$/)
+    if (group) {
+      groupType = group[1].trim()
+      continue
+    }
+
+    const typed = line.match(/^[+-]\s+\[(.+?)]\s+(.+)$/)
+    if (typed) {
+      items.push({ type: typed[1].trim(), content: typed[2].trim() })
+      continue
+    }
+
+    const bullet = line.match(/^-\s+(.+)$/)
+    if (bullet) {
+      items.push({ type: groupType || '变更', content: bullet[1].trim() })
+    }
+  }
+
+  return items
 }
 
 export function normalizeVersionTag(value: string): string {

@@ -2,6 +2,8 @@
 
 ## 未发布
 
+## v1.3.0
+
 ### 图片生成与任务
 
 - 新增 `gpt-image-2.5` ChatGPT 网页兼容入口：覆盖模型目录、控制台图片选项、文生图、JSON/multipart 参考图编辑和流式/非流式图片聊天，复用现有账号池与图片链路；使用 `auto` 会话模型与 `picture_v2` 图片工具，旧 `gpt-image-2` 路由和默认值保留，实际底层图片版本由上游账号权限决定。
@@ -19,13 +21,18 @@
 - 账号定时检查保存完整配额快照，账号页可见时自动读取最新状态；按账号每次业务调用尝试持久化成功/失败计数，修正遗漏和重复反馈。
 - CPA 仅导入 Codex OAuth，保留完整凭证并报告类型不支持的记录。
 
-### BPS 模型与工具中继
+### 功能移除
 
 - 移除已废弃的 BPS/BSG：不再提供 `bsg/` 模型、`internal/bps`、`GO_BPS_*` 配置、账号 BPS 开关与工具历史。
 
 ### 接口与流式
 
 - Responses 协议复用 Chat 流式管道：SSE 事件增量发出并立即 flush，客户端取消向上游传播，不再等完整答案后一次性写出；新增 Responses 请求校验。
+
+### 搜索
+
+- `/v1/search` 改为专用 ChatGPT Web 搜索链路：默认模型 `gpt-5-5`（替换不可用的 `gpt-4o-search-preview`），prepare 携带 `system_hints:["search"]`，会话携带 `force_use_search:true`；从会话消息提取真实来源（url/link/source_url/metadata.url，带标题、摘要、类型并去重），答案引用标记归一为 `[n]`，`sources` 不再固定为空数组。
+- 搜索契约与聊天对齐：未知或图片模型返回 404，账号重试与失败结算同一规则，轮询遵守 Retry-After 与指数退避；DebugCenter 与 Skills 安装指令的来源链接承诺自此成立。
 
 ### 可编辑文件任务
 
@@ -43,6 +50,7 @@
 
 - 精简为 GPT-only 功能：移除 Python 服务、captcha-solver 等旧组件（约 3.9 万行），统一部署入口和文档，保留既有账号与图片队列数据兼容。
 - 统一为 gpt2api 命名、Go 后端、Vue 前端；项目依赖安装统一使用 pnpm，Docker 仅用 npm 引导安装固定 pnpm 版本，CI 不安装 npm 依赖。
+- 运行时升级到 Node 26 LTS 与 Vue 3.5.45：CI setup-node 与 Docker 基础镜像同步 Node 26，Vue 在现有 semver 范围内升级，pnpm 保持 12.5.1。
 - 前端工具链迁移到 Vite+ 1.6.0：开发、测试、构建和预览脚本改用 `vp`，Vite+ core/Rolldown 与 Vitest 5 接管构建测试，保留 `vue-tsc` 类型检查。
 - 迁移保留 `@` 别名、开发代理、`dist` 输出、Tailwind 3/PostCSS、nanocat-ui、vue-virtual-scroller、happy-dom 和 ECharts vendor 引用；8 个前端测试（23 个用例）含 Dashboard 六图真实挂载回归均通过。
 - 增加串行门禁 `scripts/check.sh`：测试 → 构建 → 静态分析；构建产出主服务、Go 图片网关、iCloud 邮箱三个本地镜像并校验 Compose，不启动服务或发布镜像。
@@ -50,6 +58,14 @@
 - 将本地门禁拆成 `scripts/check-backend.sh` 与 `scripts/check-frontend.sh`：根 `scripts/check.sh` 只按 `test` → `build` → `static` 依次调用两个子脚本，不再重复实现检查逻辑。前端子命令分别为 `pnpm --dir web-vue exec vp test --run`、`pnpm exec vp build` 与 `vue-tsc --noEmit`（静态阶段仍跑 `git diff --check HEAD`）。后端子命令覆盖三个 Go module 的 `go test -race`、主服务/图片网关/iCloud 三镜像构建、原有 Compose overlay 与环境 JSON 断言（`node -e` 改为 `jq -e`，键值不变），以及 `go vet`/`gofmt`/`bash -n`/`git diff --check`；后端脚本不调用 Node 或 pnpm。
 - 新增 GitHub Actions `frontend.yml` 与 `backend.yml`：二者均声明带路径过滤的 `push`/`pull_request`、`workflow_call` 与 `workflow_dispatch`。前端工作流只安装 Node 26 与 pnpm 12.5.1，按 test → build → static 调用 `check-frontend.sh`，不引入 Go/Docker。后端工作流只安装 Go 1.27.x，按同一顺序调用 `check-backend.sh`，不安装 Node/pnpm。路径覆盖 `web-vue`、Go 源码、Compose、Dockerfile、编排脚本、两个检查工作流、`ci.yml` 与 `docker-publish.yml`，避免共享编排文件变更时没有任何工作流触发。
 - `ci.yml` 改为仅 `workflow_call`/`workflow_dispatch` 的薄编排器，按 `needs` 先调用 `frontend.yml` 再调用 `backend.yml`；`docker-publish.yml` 仍 `uses` `ci.yml`，发布前走完整前后端门禁。Docker `web-build` 最后一步改为显式 `pnpm exec vp build`，保留 Node 26、按 `TARGETARCH` 的 npm 缓存、`--allow-scripts=pnpm` 与 pnpm 12.5.1 断言，不再经过 `pnpm run build`。
+
+### 部署与配置
+
+- 整体版本定为 `1.3.0`（`VERSION`、Go 默认版本、Vue `package.json`）。
+- 根 `docker-compose.yml` 改为发布镜像优先：app 默认 `ghcr.io/maiphucgiang/gpt2api:latest`（`GPT2API_IMAGE` 可覆盖），不再隐式本地构建；图片网关、Redis、iCloud profile 保留。`deploy/install.sh` 的 docker 模式先 `pull app` 再 `up -d`，不再对无 build 的默认 app 强制 `--build`。
+- `docker-compose.local.yml` 改为含 app 构建、图片网关、Redis、iCloud 的完整本地编排，默认镜像 `gpt2api:local`、端口 `8000`。本地构建命令为 `docker compose -f docker-compose.local.yml up -d --build`。删除 `docker-compose.go.yml`。
+- 用户配置入口改为 `config.example.json` → `data/config.json`（权限 600，不覆盖已有文件）。应用优先读取 JSON 中的 auth/admin/webui、public_base_url、request/chat/image/editable/proxy/clearance 字段；环境变量非空时覆盖。删除 `.env.example`。宿主机端口、镜像、UID/GID、TZ、网关和邮箱参数仍用 Compose 默认值或命令行覆盖，不写入应用 JSON。
+- WARP 叠加改用官方 `ghcr.io/ccbkkb/microwarp:latest`：保留 `NET_ADMIN`/`SYS_MODULE`，补齐 IPv6 sysctl，内部无认证 SOCKS 显式 `ALLOW_NO_AUTH=1`；官方 Alpine 镜像使用内置 `wget` 对 `http://127.0.0.1:1080/` 做 healthcheck，凭证目录挂到 `data/microwarp`。
 
 ## v1.2.4
 

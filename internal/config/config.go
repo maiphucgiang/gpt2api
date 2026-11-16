@@ -21,6 +21,7 @@ type Config struct {
 	APIKey                  string
 	AdminKey                string
 	WebUIKey                string
+	PublicBaseURL           string
 	UpstreamURL             string
 	UpstreamAPIKey          string
 	OpenAIBaseURL           string
@@ -147,6 +148,7 @@ func Load(root string) (Config, error) {
 		APIKey:                  env("GPT2API_AUTH_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_AUTH_KEY"))),
 		AdminKey:                env("GPT2API_ADMIN_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_ADMIN_KEY"))),
 		WebUIKey:                env("GPT2API_WEBUI_KEY", strings.TrimSpace(os.Getenv("CHATGPT2API_WEBUI_KEY"))),
+		PublicBaseURL:           strings.TrimSpace(os.Getenv("GO_PUBLIC_BASE_URL")),
 		UpstreamURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("GO_UPSTREAM_URL")), "/"),
 		UpstreamAPIKey:          strings.TrimSpace(os.Getenv("GO_UPSTREAM_API_KEY")),
 		OpenAIBaseURL:           strings.TrimRight(env("GO_OPENAI_BASE_URL", "https://chatgpt.com"), "/"),
@@ -170,7 +172,7 @@ func Load(root string) (Config, error) {
 		RegisterCaptchaURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_CAPTCHA_URL")), "/"),
 		RegisterDriverURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_URL")), "/"),
 		RegisterDriverKey:       strings.TrimSpace(os.Getenv("GO_REGISTER_DRIVER_KEY")),
-		Version:                 env("GO_VERSION", "1.2.4-go"),
+		Version:                 env("GO_VERSION", "1.3.0"),
 		AllowAnonymous:          envBool("GO_ALLOW_ANONYMOUS", false),
 		RequestTimeout:          time.Duration(requestTimeoutSeconds) * time.Second,
 		ChatMaxRetries:          chatMaxRetries,
@@ -205,21 +207,128 @@ func Load(root string) (Config, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
-	if cfg.APIKey == "" {
-		cfg.APIKey = firstString(rawConfig, "auth-key", "api_key")
-	}
-	if cfg.AdminKey == "" {
-		cfg.AdminKey = firstString(rawConfig, "app_key", "admin_key")
-	}
-	if cfg.WebUIKey == "" {
-		cfg.WebUIKey = firstString(rawConfig, "webui_key")
-	}
+	applyFileConfig(&cfg, rawConfig)
 	if cfg.APIKey == "" && cfg.AdminKey != "" {
 		cfg.APIKey = cfg.AdminKey
 	}
 	applyProxyConfig(&cfg, rawConfig)
 
 	return cfg, nil
+}
+
+func envSet(name string) bool {
+	return strings.TrimSpace(os.Getenv(name)) != ""
+}
+
+func fileInt(values map[string]any, key string) (int, bool) {
+	if values == nil {
+		return 0, false
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	return configInt(value), true
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func applyFileConfig(cfg *Config, values map[string]any) {
+	if cfg == nil || values == nil {
+		return
+	}
+	if cfg.APIKey == "" {
+		cfg.APIKey = firstString(values, "auth-key", "api_key")
+	}
+	if cfg.AdminKey == "" {
+		cfg.AdminKey = firstString(values, "app_key", "admin_key")
+	}
+	if cfg.WebUIKey == "" {
+		cfg.WebUIKey = firstString(values, "webui_key")
+	}
+	if cfg.UpstreamURL == "" {
+		cfg.UpstreamURL = strings.TrimRight(firstString(values, "upstream_url"), "/")
+	}
+	if cfg.UpstreamAPIKey == "" {
+		cfg.UpstreamAPIKey = firstString(values, "upstream_api_key")
+	}
+	if cfg.FlareSolverrURL == "" {
+		cfg.FlareSolverrURL = strings.TrimRight(firstString(values, "flaresolverr_url"), "/")
+	}
+	if !envSet("GO_PUBLIC_BASE_URL") {
+		if publicBase := firstString(values, "public_base_url"); publicBase != "" {
+			cfg.PublicBaseURL = publicBase
+			_ = os.Setenv("GO_PUBLIC_BASE_URL", publicBase)
+		}
+	}
+	if !envSet("GO_REQUEST_TIMEOUT_SECONDS") {
+		if value, ok := fileInt(values, "request_timeout_seconds"); ok {
+			cfg.RequestTimeout = time.Duration(clampInt(value, 10, 300)) * time.Second
+		}
+	}
+	if !envSet("GO_CHAT_MAX_RETRIES") {
+		if value, ok := fileInt(values, "chat_max_retries"); ok {
+			cfg.ChatMaxRetries = clampInt(value, 0, 3)
+		}
+	}
+	if !envSet("GO_IMAGE_ACCOUNT_CONCURRENCY") {
+		if value, ok := fileInt(values, "image_account_concurrency"); ok {
+			cfg.ImageAccountLimit = clampInt(value, 1, 4)
+		}
+	}
+	if !envSet("GO_IMAGE_MAX_CONCURRENCY") {
+		if value, ok := fileInt(values, "image_max_concurrency"); ok {
+			cfg.ImageMaxConcurrency = clampInt(value, 1, 1024)
+		}
+	}
+	if !envSet("GO_IMAGE_RETENTION_DAYS") {
+		if value, ok := fileInt(values, "image_retention_days"); ok {
+			cfg.ImageRetentionDays = clampInt(value, 1, 3650)
+		}
+	}
+	if !envSet("GO_IMAGE_TASK_WORKERS") {
+		if value, ok := fileInt(values, "image_task_workers"); ok {
+			cfg.ImageTaskWorkers = clampInt(value, 1, 32)
+		}
+	}
+	if !envSet("GO_IMAGE_TASK_QUEUE_SIZE") {
+		if value, ok := fileInt(values, "image_task_queue_size"); ok {
+			cfg.ImageTaskQueueSize = clampInt(value, 1, 4096)
+		}
+	}
+	if !envSet("GO_IMAGE_TASK_RETENTION_HOURS") {
+		if value, ok := fileInt(values, "image_task_retention_hours"); ok {
+			cfg.ImageTaskRetention = time.Duration(clampInt(value, 1, 720)) * time.Hour
+		}
+	}
+	if !envSet("GO_EDITABLE_MODEL") {
+		if value := firstString(values, "editable_model"); value != "" {
+			cfg.EditableModel = value
+		}
+	}
+	if !envSet("GO_EDITABLE_REASONING_EFFORT") {
+		if value := firstString(values, "editable_reasoning_effort"); value != "" {
+			cfg.EditableReasoningEffort = value
+		}
+	}
+	if !envSet("GO_CLEARANCE_ENABLED") {
+		if _, ok := values["clearance_enabled"]; ok {
+			cfg.ClearanceEnabled = configBool(values["clearance_enabled"], cfg.ClearanceEnabled)
+		}
+	}
+	if !envSet("GO_CLEARANCE_TIMEOUT_SECONDS") {
+		if value, ok := fileInt(values, "clearance_timeout_seconds"); ok {
+			cfg.ClearanceTimeout = time.Duration(clampInt(value, 1, 300)) * time.Second
+		}
+	}
 }
 
 func applyProxyConfig(cfg *Config, values map[string]any) {

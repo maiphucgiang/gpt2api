@@ -1,3 +1,0 @@
-# Compatibility entry point; use docker-compose.yml for new installations.
-include:
-  - path: docker-compose.yml

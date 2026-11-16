@@ -1,24 +1,30 @@
-# Overlay: docker compose -f docker-compose.yml -f docker-compose.warp.yml up -d --build
+# Overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.warp.yml up -d
+#   docker compose -f docker-compose.local.yml -f docker-compose.warp.yml up -d --build
 services:
   warp-proxy:
-    image: caomingjun/warp:latest
+    image: ghcr.io/ccbkkb/microwarp:latest
     restart: unless-stopped
     environment:
-      WARP_SLEEP: "2"
+      ALLOW_NO_AUTH: "1"
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
     sysctls:
       net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv6.conf.default.disable_ipv6: 0
+      net.ipv6.conf.all.forwarding: 1
       net.ipv4.conf.all.src_valid_mark: 1
     ports:
       - "127.0.0.1:${WARP_SOCKS_PORT:-40000}:1080"
+    volumes:
+      - ./data/microwarp:/etc/wireguard
     healthcheck:
-      test: ["CMD", "bash", "-c", ": >/dev/tcp/127.0.0.1/1080"]
+      test: ["CMD", "wget", "-q", "-T", "2", "-t", "1", "-O", "/dev/null", "http://127.0.0.1:1080/"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 90s
 
   privoxy:
     image: vimagick/privoxy:latest

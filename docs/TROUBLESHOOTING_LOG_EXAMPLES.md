@@ -33,7 +33,7 @@ bash scripts/verify_live.sh http://127.0.0.1:3000
 - 401：检查账号凭证或调用方密钥，不反复重试失效账号。
 - 429：等待上游恢复时间，减少并发，不把限流误判为账号失效。
 - 403：核对代理出口及可选外部清障服务；不默认关闭 TLS 校验。
-- 文件链接错误：设置 `GO_PUBLIC_BASE_URL`，不要信任未经清洗的转发头。
+- 文件链接错误：在 `data/config.json` 设置 `public_base_url`，或设置 `GO_PUBLIC_BASE_URL`，不要信任未经清洗的转发头。
 - 队列停滞：检查 `docker compose --profile images ps` 和对应日志，确认 Redis 挂载、内部调度密钥及鉴权文件。
 
 ## 升级后启动失败

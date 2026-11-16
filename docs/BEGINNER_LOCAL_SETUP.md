@@ -3,9 +3,11 @@
 ## Docker
 
 1. 安装 Docker 和 Compose 2.24+。
-2. 在仓库根目录复制 `.env.example` 为 `.env`，权限设为 `600`，填入不同的 API 与管理密钥。
-3. 执行 `bash deploy/install.sh --mode docker --port 3000`。
+2. 将 `config.example.json` 复制为 `data/config.json`（已有文件不要覆盖），权限设为 `600`，填入不同的 `auth-key` 与 `admin_key`。
+3. 执行 `bash deploy/install.sh --mode docker --port 3000`。该命令拉取 `ghcr.io/maiphucgiang/gpt2api:latest` 并启动，不强制本地构建。
 4. 打开 `http://127.0.0.1:3000`，使用管理密钥登录并添加 GPT 账号。
+
+本地构建完整编排（含图片后端）使用 `docker compose -f docker-compose.local.yml up -d --build`，默认端口 `8000`。
 
 安装脚本只创建缺少的目录、复制缺少的配置，不改写已有账号和密钥。已有数据目录的属主必须与容器 UID/GID 一致；可通过 `GPT2API_UID`、`GPT2API_GID` 显式指定。
 
@@ -21,7 +23,7 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 GO_LISTEN_ADDR=127.0.0.1:8000 ./bin/gpt2api
 ```
 
-通过进程环境配置 `GPT2API_AUTH_KEY` 和 `GPT2API_ADMIN_KEY`，或使用权限为 `600` 的 `data/config.json`；源码程序不会自动载入 `.env`。
+通过权限为 `600` 的 `data/config.json` 配置 `auth-key` 和 `admin_key`；环境变量非空时覆盖对应字段。源码程序不会自动载入 `.env`。
 
 开发前端可运行 `pnpm --dir web-vue dev`。自动配额检查配置在管理接口 `/api/register/openai/survival`，页面可见时自动读取最新本地状态。
 
@@ -31,8 +33,8 @@ GO_LISTEN_ADDR=127.0.0.1:8000 ./bin/gpt2api
 
 ## 可选组件
 
-- 图片队列：`.env` 设置内部调度密钥，使用 `docker compose --profile images up -d --build`。
-- 本地邮箱：使用 `docker compose --profile local-icloud up -d --build`。
-- 两者同时启用：在 `.env` 设置 `COMPOSE_PROFILES=images,local-icloud`。
+- 图片队列：设置 `IMAGE_SCHEDULER_INTERNAL_KEY`，发布镜像用 `docker compose --profile images up -d`，本地构建用 `docker compose -f docker-compose.local.yml --profile images up -d --build`。
+- 本地邮箱：发布镜像用 `docker compose --profile local-icloud up -d`，本地构建用 `docker compose -f docker-compose.local.yml --profile local-icloud up -d --build`。
+- 两者同时启用：`docker compose --profile images --profile local-icloud up -d`（本地构建加上 `-f docker-compose.local.yml --build`）。
 
 升级和回退见 [MIGRATION.md](MIGRATION.md)。

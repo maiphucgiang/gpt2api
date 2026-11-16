@@ -10,9 +10,10 @@
 ## 配置迁移
 
 - 使用 `cmd/gpt2api`、`bin/gpt2api`、`Dockerfile` 和根目录 `docker-compose.yml`。
-- 新安装使用 `GPT2API_AUTH_KEY`、`GPT2API_ADMIN_KEY`、`GPT2API_WEBUI_KEY`；历史认证环境变量仍作为回退，新名称优先。
+- 新安装把 `config.example.json` 复制为 `data/config.json`（权限 `600`），填写 `auth-key`、`admin_key`、`webui_key`；不要覆盖已有 `data/config.json`。历史认证环境变量仍作为回退或显式覆盖，新名称优先。
 - 将旧部署的根目录、数据目录变量映射为 `GPT2API_ROOT_DIR`、`GPT2API_DATA_DIR`，启动前核对解析后的目录与原挂载一致。
 - `GPT2API_DATA_DIR` 决定默认持久化路径；具体 `GO_*_PATH` 覆盖仍有效。已有 `data/config.json` 不被旧根目录配置覆盖。
+- 旧 `.env` 仍可供 Compose 插值宿主机端口、镜像、UID/GID、时区和网关/邮箱参数；应用运行字段改在 `data/config.json`。
 - 数据结构保持兼容；旧数据中重复的账号引用会区分为独立 ID，保留工作区标识与调用累计，不补算历史次数。本地 OAuth 凭证保留；外部托管 RT 按下面的归属迁移步骤移除。
 - 非 GPT 账号保留供管理员核对，不参与业务请求或后台配额检查。
 - 浏览器登录存储键、文件签名与图片队列数据标识保持兼容，不因产品改名而重置。
@@ -34,7 +35,7 @@
 
 图片网关仍只读取 `data/auth_keys.json`；该文件必须存在。更换该文件后重建网关容器，使绑定挂载读取新文件。
 
-`docker-compose.go.yml` 为主 Compose 的兼容入口。服务器专用覆盖文件需要人工核对旧容器名、外部网络、端口和绝对挂载路径，不能直接套用新默认值。
+本地构建改用完整的 `docker-compose.local.yml`（含 app 构建、图片网关、Redis、iCloud profile，默认端口 8000）。默认 `docker-compose.yml` 使用 `ghcr.io/maiphucgiang/gpt2api:latest`，不再本地构建 app。WARP 叠加文件为 `docker-compose.warp.yml`。服务器专用覆盖文件需要人工核对旧容器名、外部网络、端口和绝对挂载路径，不能直接套用新默认值。
 
 systemd 与 launchd 模板改为直接启动 Go 二进制。修改目录前先停止旧服务并更新工作目录、反向代理和服务定义。
 

@@ -23,13 +23,16 @@ Go 后端与 Vue 控制台，提供 GPT 账号管理和 OpenAI 兼容接口。
 需要 Docker Compose 2.24+。安装脚本仅使用已有工具，不下载或执行远程安装脚本。
 
 ```bash
-cp -n .env.example .env
-chmod 600 .env
-# 编辑 .env，设置不同的 GPT2API_AUTH_KEY 与 GPT2API_ADMIN_KEY。
+mkdir -p data logs
+cp -n config.example.json data/config.json
+chmod 600 data/config.json
+# 编辑 data/config.json，设置不同的 auth-key 与 admin_key。
 bash deploy/install.sh --mode docker --port 3000
 ```
 
-访问 `http://127.0.0.1:3000`，用管理密钥登录。默认只绑定回环地址；对外访问应通过 HTTPS 反向代理。
+已有 `data/config.json` 不会被覆盖。访问 `http://127.0.0.1:3000`，用管理密钥登录。默认只绑定回环地址；对外访问应通过 HTTPS 反向代理。
+
+默认 `docker-compose.yml` 使用 `ghcr.io/maiphucgiang/gpt2api:latest`，可用 `GPT2API_IMAGE` 覆盖。安装脚本会先拉取 app 镜像再启动，不强制 `--build`。
 
 ```bash
 docker compose ps
@@ -37,20 +40,36 @@ docker compose logs --tail 100 app
 bash scripts/verify_live.sh http://127.0.0.1:3000
 ```
 
+本地构建完整编排（含图片网关与 iCloud profile）使用：
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+本地默认端口为 `8000`。
+
 ### 可选组件
 
 ```bash
-# 在 .env 配置 IMAGE_SCHEDULER_INTERNAL_KEY，沿用安装脚本创建的 data/auth_keys.json。
-docker compose --profile images up -d --build
+# 发布镜像：设置 IMAGE_SCHEDULER_INTERNAL_KEY 后启动图片队列。
+IMAGE_SCHEDULER_INTERNAL_KEY=... docker compose --profile images up -d
+
+# 本地构建：
+IMAGE_SCHEDULER_INTERNAL_KEY=... docker compose -f docker-compose.local.yml --profile images up -d --build
 
 # 本地邮箱服务，不单独公开管理端口。
-docker compose --profile local-icloud up -d --build
+docker compose --profile local-icloud up -d
+docker compose -f docker-compose.local.yml --profile local-icloud up -d --build
 ```
 
 图片网关监听 `127.0.0.1:3001`，Redis 数据继续使用 `data/go-image-redis/`。停止服务时不要使用 `down -v`，升级前先备份数据。
 
-可用 `docker-compose.warp.yml` 叠加可选代理；它需要额外容器能力，仅在信任主机和镜像时启用。外部清障服务通过 `GO_FLARESOLVERR_URL` 接入。
+可用 `docker-compose.warp.yml` 叠加 MicroWARP 代理；它需要额外容器能力，仅在信任主机和镜像时启用。外部清障服务通过 `flaresolverr_url` 或 `GO_FLARESOLVERR_URL` 接入。
 
+```bash
+docker compose -f docker-compose.yml -f docker-compose.warp.yml up -d
+docker compose -f docker-compose.local.yml -f docker-compose.warp.yml up -d --build
+```
 ## 源码运行
 
 主服务需要 Go 1.23+、Node.js 26、pnpm 12.5.1；本地邮箱子模块需要 Go 1.25+。
@@ -63,29 +82,34 @@ go build -mod=readonly -o bin/gpt2api ./cmd/gpt2api
 ./bin/gpt2api
 ```
 
-监听地址默认 `:8080`。源码运行不会读取 `.env`；通过进程环境或私有的 `data/config.json` 配置密钥。
+监听地址默认 `:8080`。源码运行不会读取 `.env`；通过私有的 `data/config.json` 配置密钥与运行参数，环境变量非空时覆盖对应字段。
 
 ## 配置与数据
 
-| 配置 | 用途 |
-|---|---|
-| `GPT2API_AUTH_KEY` | API 密钥 |
-| `GPT2API_ADMIN_KEY` | 控制台管理密钥 |
-| `GPT2API_WEBUI_KEY` | 可选的用户界面密钥 |
-| `GPT2API_DATA_DIR` | 持久化目录，默认 `data` |
-| `GO_LISTEN_ADDR` | 监听地址 |
-| `GO_PUBLIC_BASE_URL` | 返回文件链接使用的公网地址 |
-| `GO_PROXY_URL` / `GO_PROXY_POOL` | 默认代理或代理池 |
-| `GO_IMAGE_MAX_CONCURRENCY` | 图片全局并发上限 |
-| `GO_IMAGE_RETENTION_DAYS` | 图片保留天数，默认 1 天 |
-| `GO_IMAGE_TASK_WORKERS` | 控制台图片任务工作线程，默认 2，按单张输出计 |
-| `GO_IMAGE_TASK_QUEUE_SIZE` | 控制台图片等待容量，默认 64 |
-| `GO_IMAGE_TASK_RETENTION_HOURS` | 控制台终态任务记录保留时间，默认 24 小时 |
-| `GO_EDITABLE_MODEL` | PPT/PSD 上游固定模型，默认 `gpt-5-5-thinking` |
-| `GO_EDITABLE_REASONING_EFFORT` | PPT/PSD 上游思考强度，默认 `extended` |
-| `GO_IMAGE_SCHEDULER_KEY` | 源码运行的内部调度密钥；Compose 使用 `IMAGE_SCHEDULER_INTERNAL_KEY` 映射 |
+首次安装将 `config.example.json` 复制为 `data/config.json`，权限 `600`。应用优先读取该文件中的运行字段；环境变量作为旧部署回退或显式覆盖。
+
+| JSON 字段 | 环境变量 | 用途 |
+|---|---|---|
+| `auth-key` | `GPT2API_AUTH_KEY` | API 密钥 |
+| `admin_key` | `GPT2API_ADMIN_KEY` | 控制台管理密钥 |
+| `webui_key` | `GPT2API_WEBUI_KEY` | 可选的用户界面密钥 |
+| | `GPT2API_DATA_DIR` | 持久化目录，默认 `data` |
+| | `GO_LISTEN_ADDR` | 监听地址 |
+| `public_base_url` | `GO_PUBLIC_BASE_URL` | 返回文件链接使用的公网地址 |
+| `proxy.proxy_url` / `proxy.proxy_pool` | `GO_PROXY_URL` / `GO_PROXY_POOL` | 默认代理或代理池 |
+| `image_max_concurrency` | `GO_IMAGE_MAX_CONCURRENCY` | 图片全局并发上限 |
+| `image_retention_days` | `GO_IMAGE_RETENTION_DAYS` | 图片保留天数，默认 1 天 |
+| `image_task_workers` | `GO_IMAGE_TASK_WORKERS` | 控制台图片任务工作线程，默认 2，按单张输出计 |
+| `image_task_queue_size` | `GO_IMAGE_TASK_QUEUE_SIZE` | 控制台图片等待容量，默认 64 |
+| `image_task_retention_hours` | `GO_IMAGE_TASK_RETENTION_HOURS` | 控制台终态任务记录保留时间，默认 24 小时 |
+| `editable_model` | `GO_EDITABLE_MODEL` | PPT/PSD 上游固定模型，默认 `gpt-5-5-thinking` |
+| `editable_reasoning_effort` | `GO_EDITABLE_REASONING_EFFORT` | PPT/PSD 上游思考强度，默认 `extended` |
+| `flaresolverr_url` / `clearance_enabled` | `GO_FLARESOLVERR_URL` / `GO_CLEARANCE_ENABLED` | 外部清障服务 |
+| | `GO_IMAGE_SCHEDULER_KEY` | 源码运行的内部调度密钥；Compose 使用 `IMAGE_SCHEDULER_INTERNAL_KEY` 映射 |
 
 `GO_CONFIG_PATH`、`GO_ACCOUNTS_PATH`、`GO_AUTH_KEYS_PATH`、`GO_REGISTER_PATH` 可覆盖具体路径。默认配置写入 `data/config.json`；首次运行可复制旧根目录 `config.json`，不覆盖已有数据配置。历史认证环境变量仍可作为回退。
+
+宿主机端口、镜像、UID/GID、时区、图片网关和邮箱参数不是 Go 应用 JSON 字段，用 Compose 默认值或命令行覆盖：`GPT2API_PORT`、`GPT2API_BIND`、`GPT2API_IMAGE`、`GPT2API_UID`、`GPT2API_GID`、`TZ`、`IMAGE_GATEWAY_PORT`、`IMAGE_SCHEDULER_INTERNAL_KEY`、`ICLOUD_PRIVACY_MAIL_API_KEY`。
 
 自动配额检查配置保存在 `data/register.json` 的 `openai_survival` 中；可通过管理接口 `/api/register/openai/survival` 查看或调整。禁用账号和非 GPT 凭证不会自动探测，失败会退避且保留上次配额。
 

@@ -48,15 +48,22 @@ for file in config.json auth_keys.json; do
     if [[ "$file" == config.json && -f config.json ]]; then
       (set -o noclobber; cat config.json > "$target")
       created=true
+    elif [[ "$file" == config.json && -f config.example.json ]]; then
+      (set -o noclobber; cat config.example.json > "$target")
+      created=true
     elif [[ "$file" == auth_keys.json ]]; then
       (set -o noclobber; printf '[]\n' > "$target")
       created=true
     fi
+  fi
+  if [[ "$created" == true ]]; then
+    chmod 600 "$target"
   fi
   if [[ "$created" == true && $(id -u) == 0 ]]; then
     chown "$GPT2API_UID:$GPT2API_GID" "$target"
   fi
 done
 docker compose config --quiet
-docker compose up -d --build
+docker compose pull app
+docker compose up -d
 printf 'gpt2api: http://127.0.0.1:%s (configure authentication before use)\n' "$PORT"

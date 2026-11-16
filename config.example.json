@@ -1,4 +1,24 @@
 {
   "auth-key": "",
-  "admin_key": ""
+  "admin_key": "",
+  "webui_key": "",
+  "public_base_url": "",
+  "request_timeout_seconds": 180,
+  "chat_max_retries": 2,
+  "image_account_concurrency": 1,
+  "image_max_concurrency": 128,
+  "image_retention_days": 1,
+  "image_task_workers": 2,
+  "image_task_queue_size": 64,
+  "image_task_retention_hours": 24,
+  "editable_model": "gpt-5-5-thinking",
+  "editable_reasoning_effort": "extended",
+  "proxy": {
+    "proxy_url": "",
+    "proxy_pool": [],
+    "resource_proxy_url": "",
+    "resource_proxy_pool": []
+  },
+  "flaresolverr_url": "",
+  "clearance_enabled": false
 }

@@ -89,6 +89,9 @@ func TestLegacyRootConfigCopiedWithoutOverwritingDataConfig(t *testing.T) {
 
 func TestRuntimeFieldsPreferConfigJSONWhenEnvUnset(t *testing.T) {
 	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("1.3.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, key := range []string{
 		"GPT2API_AUTH_KEY", "CHATGPT2API_AUTH_KEY", "GPT2API_ADMIN_KEY", "CHATGPT2API_ADMIN_KEY",
 		"GPT2API_WEBUI_KEY", "CHATGPT2API_WEBUI_KEY", "GO_PUBLIC_BASE_URL", "CHATGPT2API_BASE_URL",
@@ -100,6 +103,7 @@ func TestRuntimeFieldsPreferConfigJSONWhenEnvUnset(t *testing.T) {
 	} {
 		t.Setenv(key, "")
 	}
+	t.Setenv("GO_VERSION", "9.9.9")
 	dataDir := filepath.Join(root, "data")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -150,7 +154,7 @@ func TestRuntimeFieldsPreferConfigJSONWhenEnvUnset(t *testing.T) {
 	if !cfg.ClearanceEnabled || cfg.FlareSolverrURL != "http://flaresolverr.example.test:8191" || cfg.UpstreamURL != "http://upstream.example.test" {
 		t.Fatalf("clearance/upstream: %+v", cfg)
 	}
-	if cfg.ListenAddr != ":8080" || cfg.Version != "1.3.0" {
+	if cfg.ListenAddr != ":8080" || cfg.Version != "1.3.1" {
 		t.Fatalf("compose-only JSON keys leaked: listen=%q version=%q", cfg.ListenAddr, cfg.Version)
 	}
 }
